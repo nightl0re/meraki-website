@@ -135,7 +135,7 @@ export async function createBooking(
   try {
     const booking = await db.$transaction(async (tx) => {
       // Lock the sitter row so two parents can't grab the same slot at once.
-      await tx.$queryRaw`SELECT userId FROM SitterProfile WHERE userId = ${sitter.id} FOR UPDATE`;
+      await tx.$queryRaw`SELECT "userId" FROM "SitterProfile" WHERE "userId" = ${sitter.id} FOR UPDATE`;
       const clash = await tx.booking.findFirst({
         where: {
           sitterId: sitter.id,

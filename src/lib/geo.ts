@@ -104,7 +104,7 @@ export async function listAreas() {
 async function areaCentre(query: string) {
   const name = query.trim().split(",")[0].trim();
   const agg = await db.user.aggregate({
-    where: { role: "SITTER", area: name, latitude: { not: null } },
+    where: { role: "SITTER", area: { equals: name, mode: "insensitive" }, latitude: { not: null } },
     _avg: { latitude: true, longitude: true },
   });
   if (agg._avg.latitude == null || agg._avg.longitude == null) return null;

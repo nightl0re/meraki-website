@@ -21,9 +21,9 @@ export default async function AdminBookingsPage({ searchParams }: PageProps<"/ad
   if (status) where.status = status;
   if (q) {
     where.OR = [
-      { code: { contains: q.toUpperCase() } },
-      { parent: { OR: [{ lastName: { contains: q } }, { email: { contains: q } }] } },
-      { sitter: { OR: [{ lastName: { contains: q } }, { firstName: { contains: q } }] } },
+      { code: { contains: q, mode: "insensitive" as const } },
+      { parent: { OR: [{ lastName: { contains: q, mode: "insensitive" as const } }, { email: { contains: q, mode: "insensitive" as const } }] } },
+      { sitter: { OR: [{ lastName: { contains: q, mode: "insensitive" as const } }, { firstName: { contains: q, mode: "insensitive" as const } }] } },
     ];
   }
 

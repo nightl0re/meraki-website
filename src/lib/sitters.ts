@@ -29,7 +29,7 @@ export async function searchSitters(s: SitterSearch) {
   if (s.weekday != null) profile.availability = { some: { weekday: s.weekday } };
 
   const where: Prisma.UserWhereInput = { role: "SITTER", status: "ACTIVE", sitterProfile: profile };
-  if (s.area) where.area = s.area;
+  if (s.area) where.area = { equals: s.area, mode: "insensitive" };
   if (s.near) {
     const box = boundingBox(s.near, radius);
     where.latitude = { gte: box.minLat, lte: box.maxLat };

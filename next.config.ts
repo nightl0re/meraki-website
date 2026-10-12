@@ -3,13 +3,13 @@ import type { NextConfig } from "next";
 const isDev = process.env.NODE_ENV !== "production";
 
 // Content-Security-Policy: only our own scripts, styles and fonts; images from
-// us plus the demo photo host. Next.js needs inline scripts for hydration, and
+// us, Vercel Blob (profile photos) and the demo photo host. Next.js needs inline scripts for hydration, and
 // eval in development for fast refresh.
 const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://randomuser.me",
+  "img-src 'self' data: blob: https://randomuser.me https://*.public.blob.vercel-storage.com",
   "font-src 'self'",
   `connect-src 'self'${isDev ? " ws: wss:" : ""}`,
   "frame-ancestors 'none'",

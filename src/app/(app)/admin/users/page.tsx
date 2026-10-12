@@ -16,7 +16,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/admin/user
 
   const where: Prisma.UserWhereInput = {};
   if (role) where.role = role;
-  if (q) where.OR = [{ email: { contains: q } }, { firstName: { contains: q } }, { lastName: { contains: q } }];
+  if (q) where.OR = [{ email: { contains: q, mode: "insensitive" as const } }, { firstName: { contains: q, mode: "insensitive" as const } }, { lastName: { contains: q, mode: "insensitive" as const } }];
 
   const users = await db.user.findMany({ where, orderBy: { createdAt: "desc" }, take: 100 });
 

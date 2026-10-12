@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { SiteHeader } from "@/components/site-header";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Avatar, Rating } from "@/components/ui";
@@ -8,9 +9,15 @@ import { navFor } from "@/lib/nav";
 import { navCounts } from "@/lib/nav-counts";
 import { logout } from "@/app/actions/auth";
 
+// Every signed-in page depends on the request (session, database), so it is
+// never prerendered at build time.
+export const dynamic = "force-dynamic";
+
 export default async function AppLayout({ children }: LayoutProps<"/">) {
-  // Expire stale requests and auto-confirm finished jobs before showing data.
-  await sweep();
+  // Time-based housekeeping (expire unanswered requests, auto-confirm finished
+  // jobs, close past job posts) runs after the response is sent, so it never
+  // slows down or breaks the page. /api/cron does the same on a schedule.
+  after(() => sweep().catch((e) => console.error("[sweep]", e)));
   const user = await getCurrentUser();
   // Pages call requireUser() themselves; this only decides whether to draw the sidebar.
   const counts = user ? await navCounts(user) : {};

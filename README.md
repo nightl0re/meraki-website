@@ -75,18 +75,21 @@ Test cards (any future expiry, any CVC):
 ## Tech stack
 
 - **Next.js 16** (App Router, Server Components, Server Actions) + **React 19** + **TypeScript**
-- **MySQL 8** with **Prisma** ORM
+- **PostgreSQL** (Prisma Postgres in production) with **Prisma** ORM
+- Profile photos in **Vercel Blob** (local disk in development)
 - **Tailwind CSS v4**, Motion, Phosphor icons, Quicksand + Nunito fonts
 - Sessions: random token in an httpOnly cookie, SHA-256 hash stored in the database; passwords hashed with bcrypt (cost 12)
 - Zod validation on every form, rate-limited login and signup
 
 ## Getting started
 
-Requirements: Node.js 20+, MySQL 8.
+Requirements: Node.js 20+. The database is PostgreSQL; for local development
+Prisma can run one for you, no install needed.
 
 ```bash
 npm install
-cp .env.example .env        # then set DATABASE_URL (and the other values)
+npx prisma dev --name meraki --detach   # starts a local Postgres, prints its TCP URL
+cp .env.example .env        # set DATABASE_URL to that postgres:// URL (and the other values)
 npm run db:migrate          # create the tables
 npm run db:seed             # demo data in New York neighborhoods
 npm run dev                 # http://localhost:3000
@@ -133,11 +136,19 @@ src/
 tests/                 booking flow tests
 ```
 
+## Deploying to Vercel
+
+1. In the Vercel project, open **Storage** and add **Prisma Postgres**, then **Blob**, and connect both to the project. This adds `DATABASE_URL` (or a similarly named Postgres URL) and `BLOB_READ_WRITE_TOKEN` to the environment variables. `DATABASE_URL` must be the direct `postgres://` connection string.
+2. In **Settings → Environment Variables**, add `APP_TIMEZONE`, `NEXT_PUBLIC_CURRENCY`, `NEXT_PUBLIC_LOCALE`, `GEOCODER_COUNTRY`, `GEOCODER_USER_AGENT`, `CRON_SECRET` (a long random string) and `APP_URL` (your site's URL). See `.env.example`.
+3. Redeploy. The `vercel-build` script runs `prisma migrate deploy` before `next build`, so the tables are created automatically. Pages are never prerendered, so the build doesn't touch the database.
+4. Optional demo data: on your computer, run `npm run db:seed` with `DATABASE_URL` pointing at the production database. This **wipes** that database first and creates demo accounts with known passwords, so only do it for a demo site.
+
+`vercel.json` schedules `/api/cron` daily (the most the Hobby plan allows); Vercel sends `CRON_SECRET` automatically. Time-based updates also run after page views, so they happen promptly while people use the site.
+
 ## Going to production
 
-- Set `CRON_SECRET` and call `GET /api/cron` every 5 minutes with `Authorization: Bearer <secret>` so requests expire and jobs auto-confirm even when nobody is browsing.
+- `/api/cron` expires unanswered requests, auto-confirms finished jobs and prunes expired sessions. On a paid plan, run it every few minutes.
 - Set `GEOCODER_USER_AGENT` with a contact email (OpenStreetMap's usage policy), or switch `geocode()` to a paid geocoder for higher volume.
 - Replace the simulated payment provider with a real one (see above).
-- Profile photos are stored on local disk in `uploads/`; use object storage (S3, R2) when running more than one server.
-- The login rate limiter is in memory; use Redis when running more than one server.
+- Remove or change the demo and sample accounts (`prisma/seed.ts`, `prisma/sample-accounts.ts`) before real users arrive.
 - Connect an email provider in `src/lib/mail.ts` (Resend, Postmark, SES...) and set `APP_URL`. Until then, password reset emails are printed to the server console in development, and notifications are in-app.

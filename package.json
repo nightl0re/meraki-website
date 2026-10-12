@@ -13,12 +13,14 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force",
     "postinstall": "prisma generate",
-    "test": "node --env-file=.env --conditions=react-server --import tsx --test tests/*.test.ts",
-    "db:samples": "tsx prisma/sample-accounts.ts"
+    "test": "node --env-file=.env --conditions=react-server --import tsx --test --test-concurrency=1 tests/*.test.ts",
+    "db:samples": "tsx prisma/sample-accounts.ts",
+    "vercel-build": "prisma migrate deploy && next build"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
     "@prisma/client": "^6.19.3",
+    "@vercel/blob": "^2.8.1",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "motion": "^14.1.0",
