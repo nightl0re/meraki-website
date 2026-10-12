@@ -38,6 +38,11 @@ const SKILLS = [
 ];
 const slug = (s: string) => s.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-");
 
+const LANGUAGES: Record<string, string> = {
+  Lucía: "English, Spanish", Chloe: "English, French", Priya: "English, Tamil", Noor: "English, Arabic",
+  Sofia: "English, Italian", Yuki: "English, Japanese", Elena: "English, Romanian", Mateo: "English, Spanish",
+};
+
 const SITTERS = [
   ["Amara", "Okafor", "women/44", "Pediatric nursing student, calm with newborns", "Park Slope"],
   ["Lucía", "Fernández", "women/68", "Bilingual sitter, Spanish and English at home", "Williamsburg"],
@@ -77,6 +82,8 @@ const REVIEW_TEXT = [
 async function main() {
   console.log("Clearing tables...");
   await db.$transaction([
+    db.jobApplication.deleteMany(), db.job.deleteMany(), db.bookingChild.deleteMany(), db.child.deleteMany(),
+    db.rateLimit.deleteMany(), db.passwordResetToken.deleteMany(),
     db.auditLog.deleteMany(), db.notification.deleteMany(), db.message.deleteMany(),
     db.review.deleteMany(), db.payout.deleteMany(), db.payment.deleteMany(),
     db.booking.deleteMany(), db.paymentMethod.deleteMany(), db.favorite.deleteMany(),
@@ -119,8 +126,11 @@ async function main() {
             hourlyRateCents: rate,
             experienceYears: 1 + Math.floor(rand() * 9),
             maxChildren: 2 + Math.floor(rand() * 3),
-            serviceRadiusKm: pick([5, 8, 10, 12, 15]),
+            serviceRadiusKm: i === 0 ? 10 : pick([5, 8, 10, 12, 15]),
             verifiedAt: new Date(Date.now() - (60 + i) * 24 * HOUR),
+            backgroundCheckAt: i % 3 !== 2 ? new Date(Date.now() - (55 + i) * 24 * HOUR) : null,
+            cprCertified: i % 2 === 0,
+            languages: LANGUAGES[first] ?? "English",
             skills: { create: mySkills.map((s) => ({ skillId: s.id })) },
             availability: {
               create: [
@@ -189,6 +199,21 @@ async function main() {
       include: { paymentMethods: true, parentProfile: true },
     });
     parentIds.push(user.id);
+  }
+
+  // --- children -----------------------------------------------------------------
+  const year = new Date().getFullYear();
+  const KIDS: [string, number, string][][] = [
+    [["Mia", year - 6, "Peanut allergy: no nuts at all. Loves drawing."], ["Leo", year - 3, "Naps 1-3 PM, needs his blue blanket."]],
+    [["Ava", year - 8, ""]],
+    [["Noah", year - 5, "Bedtime 7:30 PM, two stories."], ["Ella", year - 2, ""]],
+    [["Sam", year - 10, "Homework before screen time."]],
+  ];
+  for (let i = 0; i < parentIds.length; i++) {
+    for (const [firstName, birthYear, notes] of KIDS[i]) {
+      await db.child.create({ data: { parentId: parentIds[i], firstName, birthYear, notes } });
+    }
+    await db.parentProfile.update({ where: { userId: parentIds[i] }, data: { childrenCount: KIDS[i].length } });
   }
 
   // --- bookings in every state --------------------------------------------------
@@ -272,6 +297,42 @@ async function main() {
     const agg = await db.review.aggregate({ where: { subjectId: id }, _avg: { rating: true }, _count: true });
     await db.sitterProfile.update({ where: { userId: id }, data: { ratingAvg: agg._avg.rating ?? 0, ratingCount: agg._count } });
   }
+
+  // Link children to the demo parent's open bookings so sitters see names and ages.
+  const oliviaKids = await db.child.findMany({ where: { parentId: parentIds[0] } });
+  for (const b of await db.booking.findMany({ where: { parentId: parentIds[0], status: { in: ["REQUESTED", "ACCEPTED"] } } })) {
+    await db.bookingChild.createMany({ data: oliviaKids.map((c) => ({ bookingId: b.id, childId: c.id })) });
+  }
+
+  // --- job board -------------------------------------------------------------------
+  const parents = await db.user.findMany({ where: { id: { in: parentIds } } });
+  const byEmail = (e: string) => parents.find((p) => p.email === e)!;
+  const job = async (email: string, daysAhead: number, startHour: number, hours: number, title: string, description: string, maxRate: number, kids: number) => {
+    const p = byEmail(email);
+    const startsAt = atHour(daysAhead, startHour);
+    return db.job.create({
+      data: {
+        parentId: p.id, title, description, startsAt, endsAt: new Date(startsAt.getTime() + hours * HOUR),
+        childrenCount: kids, maxRateCents: maxRate * 100, area: p.area, latitude: p.latitude, longitude: p.longitude,
+        createdAt: new Date(now - 5 * HOUR),
+      },
+    });
+  };
+  const dateNight = await job("parent@meraki.test", 8, 18, 5, "Date night, two kids",
+    "Dinner, bath and bedtime for Mia (6) and Leo (3). Mia has a nut allergy. We have a friendly cat.", 25, 2);
+  await job("zara.hussain@meraki.test", 4, 11, 4, "After-school pickup and homework help",
+    "Pick up Noah from school at 3:15, snack, homework, play until we're home around 7.", 24, 2);
+  await job("zara.hussain@meraki.test", 11, 9, 8, "Full day with a toddler and a 5-year-old",
+    "Park in the morning, lunch, nap time for Ella. Experience with toddlers needed.", 26, 2);
+  await job("liam.oconnell@meraki.test", 6, 15, 4, "Evening sitter in Astoria", "Homework and dinner for Sam (10).", 22, 1);
+  for (const [i, message] of [
+    [11, "Hi Olivia! I'm free that evening and I'm a swim instructor, so bath time is my specialty. I always check allergies twice."],
+    [15, "Hello! I've looked after toddlers for 8 years and love bedtime stories. I live a few minutes away in Brooklyn Heights."],
+  ] as const) {
+    await db.jobApplication.create({ data: { jobId: dateNight.id, sitterId: sitterIds[i], message, createdAt: new Date(now - 2 * HOUR) } });
+  }
+  await db.notification.create({ data: { userId: parentIds[0], title: "New applicant", body: "Isabel applied to “Date night, two kids”.", href: `/jobs/${dateNight.id}` } });
+  await db.notification.create({ data: { userId: sitterIds[0], title: "New job near you", body: "After-school pickup and homework help in Williamsburg.", href: "/sitter/jobs" } });
 
   await db.favorite.createMany({
     data: [0, 2, 5].map((i) => ({ parentId: parentIds[0], sitterId: sitterIds[i] })),

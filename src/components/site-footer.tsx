@@ -15,13 +15,14 @@ export function SiteFooter() {
           <p className="text-sm font-medium">Parents</p>
           <ul className="mt-3 space-y-2 text-sm text-ink-3">
             <li><Link className="hover:text-ink" href="/sitters">Find a sitter</Link></li>
-            <li><Link className="hover:text-ink" href="/#how-it-works">How it works</Link></li>
+            <li><Link className="hover:text-ink" href="/about">About us and how it works</Link></li>
             <li><Link className="hover:text-ink" href="/#pricing">Pricing</Link></li>
           </ul>
         </div>
         <div>
           <p className="text-sm font-medium">Sitters</p>
           <ul className="mt-3 space-y-2 text-sm text-ink-3">
+            <li><Link className="hover:text-ink" href="/about/sitters">How Meraki works for sitters</Link></li>
             <li><Link className="hover:text-ink" href="/signup?role=sitter">Become a sitter</Link></li>
             <li><Link className="hover:text-ink" href="/login">Log in</Link></li>
           </ul>

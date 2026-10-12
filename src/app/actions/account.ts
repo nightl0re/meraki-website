@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { createSession, hashPassword, requireUser, verifyPassword } from "@/lib/auth";
 import { geocode } from "@/lib/geo";
 import { deleteImage, saveImage } from "@/lib/uploads";
+import { passwordRule } from "@/lib/validation";
 import type { FormState } from "./auth";
 
 export async function uploadAvatar(_: FormState, form: FormData): Promise<FormState> {
@@ -52,10 +53,7 @@ export async function updateAccount(_: FormState, form: FormData): Promise<FormS
 
 const passwordSchema = z.object({
   current: z.string().min(1, "Enter your current password."),
-  password: z
-    .string()
-    .min(10, "Use at least 10 characters.")
-    .refine((v) => /[a-zA-Z]/.test(v) && /\d/.test(v), "Use letters and at least one number."),
+  password: passwordRule,
 });
 
 export async function changePassword(_: FormState, form: FormData): Promise<FormState> {

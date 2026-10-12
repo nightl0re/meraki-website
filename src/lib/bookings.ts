@@ -49,9 +49,19 @@ export type NewBooking = {
   address: string;
   notes: string;
   paymentMethodId: string;
+  childIds?: string[]; // children from the family profile; sets childrenCount
 };
 
-export async function checkSlot(sitterId: string, startsAt: Date, endsAt: Date): Promise<Result> {
+// When a parent hires a sitter from a job post, the sitter has already said
+// yes to that time, so the booking starts out ACCEPTED.
+export type HireFromJob = { jobId: string; applicationId: string };
+
+export async function checkSlot(
+  sitterId: string,
+  startsAt: Date,
+  endsAt: Date,
+  opts: { skipAvailability?: boolean } = {},
+): Promise<Result> {
   const minutes = (endsAt.getTime() - startsAt.getTime()) / 60_000;
   if (minutes < config.minBookingHours * 60) return fail(`Bookings are at least ${config.minBookingHours} hour.`);
   if (minutes > config.maxBookingHours * 60) return fail(`Bookings can be at most ${config.maxBookingHours} hours.`);
@@ -61,12 +71,14 @@ export async function checkSlot(sitterId: string, startsAt: Date, endsAt: Date):
     return fail(`You can book up to ${config.maxDaysAhead} days ahead.`);
 
   // Must fit inside one of the sitter's availability windows for that weekday.
-  const day = zonedParts(startsAt).weekday;
-  const startMin = minuteOfDay(startsAt);
-  const endMin = startMin + minutes;
-  const windows = await db.availability.findMany({ where: { sitterId, weekday: day } });
-  if (!windows.some((w) => w.startMinute <= startMin && w.endMinute >= endMin)) {
-    return fail("That time is outside this sitter's availability.");
+  if (!opts.skipAvailability) {
+    const day = zonedParts(startsAt).weekday;
+    const startMin = minuteOfDay(startsAt);
+    const endMin = startMin + minutes;
+    const windows = await db.availability.findMany({ where: { sitterId, weekday: day } });
+    if (!windows.some((w) => w.startMinute <= startMin && w.endMinute >= endMin)) {
+      return fail("That time is outside this sitter's availability.");
+    }
   }
 
   const clash = await db.booking.findFirst({
@@ -82,18 +94,30 @@ export async function checkSlot(sitterId: string, startsAt: Date, endsAt: Date):
   return { ok: true };
 }
 
-export async function createBooking(parent: CurrentUser, input: NewBooking): Promise<Result<{ id: string }>> {
+export async function createBooking(
+  parent: CurrentUser,
+  input: NewBooking,
+  hire?: HireFromJob,
+): Promise<Result<{ id: string }>> {
   const sitter = await db.user.findFirst({
     where: { id: input.sitterId, role: "SITTER", status: "ACTIVE" },
     include: { sitterProfile: true },
   });
   const profile = sitter?.sitterProfile;
   if (!sitter || !profile || !profile.verifiedAt) return fail("This sitter can't be booked right now.");
-  if (!profile.acceptingBookings) return fail("This sitter isn't taking new bookings at the moment.");
+  if (!profile.acceptingBookings && !hire) return fail("This sitter isn't taking new bookings at the moment.");
+
+  let childIds: string[] = [];
+  if (input.childIds?.length) {
+    const kids = await db.child.findMany({ where: { id: { in: input.childIds }, parentId: parent.id }, select: { id: true } });
+    childIds = kids.map((k) => k.id);
+    if (childIds.length !== new Set(input.childIds).size) return fail("Choose children from your family profile.");
+    input = { ...input, childrenCount: childIds.length };
+  }
   if (input.childrenCount < 1 || input.childrenCount > profile.maxChildren)
     return fail(`This sitter looks after up to ${profile.maxChildren} children.`);
 
-  const slot = await checkSlot(sitter.id, input.startsAt, input.endsAt);
+  const slot = await checkSlot(sitter.id, input.startsAt, input.endsAt, { skipAvailability: !!hire });
   if (!slot.ok) return slot;
 
   const method = await db.paymentMethod.findFirst({
@@ -122,6 +146,15 @@ export async function createBooking(parent: CurrentUser, input: NewBooking): Pro
       });
       if (clash) throw new SlotTaken();
 
+      if (hire) {
+        // Close the job exactly once, even if the parent double-clicks.
+        const closed = await tx.job.updateMany({
+          where: { id: hire.jobId, parentId: parent.id, status: "OPEN" },
+          data: { status: "FILLED" },
+        });
+        if (closed.count !== 1) throw new JobTaken();
+      }
+
       const respondBy = new Date(
         Math.min(Date.now() + config.sitterResponseHours * HOUR, input.startsAt.getTime()),
       );
@@ -141,6 +174,8 @@ export async function createBooking(parent: CurrentUser, input: NewBooking): Pro
           serviceFeeCents: q.serviceFeeCents,
           totalCents: q.totalCents,
           respondBy,
+          ...(hire ? { status: "ACCEPTED" as const, respondedAt: new Date() } : {}),
+          children: childIds.length ? { create: childIds.map((childId) => ({ childId })) } : undefined,
           payment: {
             create: {
               paymentMethodId: method.id,
@@ -151,25 +186,45 @@ export async function createBooking(parent: CurrentUser, input: NewBooking): Pro
           },
         },
       });
-      await notify(
-        sitter.id,
-        "New booking request",
-        `${parent.firstName} ${parent.lastName} wants to book you on ${when(b)}.`,
-        `/bookings/${b.id}`,
-        tx,
-      );
-      await audit(parent.id, "booking.requested", "Booking", b.id, `hold ${formatMoney(q.totalCents)}`, tx);
+      if (hire) {
+        await tx.job.update({ where: { id: hire.jobId }, data: { hiredBookingId: b.id } });
+        await tx.jobApplication.update({ where: { id: hire.applicationId }, data: { status: "HIRED" } });
+        const others = await tx.jobApplication.findMany({
+          where: { jobId: hire.jobId, status: "APPLIED", id: { not: hire.applicationId } },
+          select: { sitterId: true },
+        });
+        await tx.jobApplication.updateMany({
+          where: { jobId: hire.jobId, status: "APPLIED", id: { not: hire.applicationId } },
+          data: { status: "DECLINED" },
+        });
+        for (const o of others) {
+          await notify(o.sitterId, "Job filled", `The family picked another sitter for ${when(b)}. Thanks for applying!`, "/sitter/jobs?tab=applications", tx);
+        }
+        await notify(sitter.id, "You're hired!", `${parent.firstName} hired you for ${when(b)}.`, `/bookings/${b.id}`, tx);
+        await audit(parent.id, "job.hired", "Booking", b.id, `hold ${formatMoney(q.totalCents)}`, tx);
+      } else {
+        await notify(
+          sitter.id,
+          "New booking request",
+          `${parent.firstName} ${parent.lastName} wants to book you on ${when(b)}.`,
+          `/bookings/${b.id}`,
+          tx,
+        );
+        await audit(parent.id, "booking.requested", "Booking", b.id, `hold ${formatMoney(q.totalCents)}`, tx);
+      }
       return b;
     });
     return { ok: true, data: { id: booking.id } };
   } catch (e) {
     await payments.void(auth.ref);
     if (e instanceof SlotTaken) return fail("Someone just booked that time. Please pick another.");
+    if (e instanceof JobTaken) return fail("This job has already been filled or closed.");
     throw e;
   }
 }
 
 class SlotTaken extends Error {}
+class JobTaken extends Error {}
 
 // --- helpers for transitions -----------------------------------------------
 
@@ -426,6 +481,9 @@ export async function sweep(force = false) {
   if (!force && Date.now() - lastSweep < 30_000) return;
   lastSweep = Date.now();
   const now = new Date();
+
+  // Job posts whose start time has passed can't be filled any more.
+  await db.job.updateMany({ where: { status: "OPEN", startsAt: { lt: now } }, data: { status: "CLOSED" } });
 
   const stale = await db.booking.findMany({
     where: { status: "REQUESTED", OR: [{ respondBy: { lt: now } }, { startsAt: { lt: now } }] },

@@ -69,3 +69,14 @@ export function initials(first: string, last: string) {
 }
 
 export const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+// "4 years" / "under 1" from a birth year (approximate on purpose: we only store the year).
+export function childAge(birthYear: number, now = new Date()) {
+  const age = now.getFullYear() - birthYear;
+  return age <= 0 ? "under 1" : `${age} ${age === 1 ? "year" : "years"}`;
+}
+
+// "Good morning" / "Good afternoon" / "Good evening" for the app time zone hour.
+export function greeting(hour: number) {
+  return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+}

@@ -49,6 +49,8 @@ export default async function SitterProfileEditPage({ searchParams }: PageProps<
               serviceRadiusKm: p.serviceRadiusKm,
               area: me.area,
               skills: p.skills.map((s) => s.skillId),
+              languages: p.languages,
+              cprCertified: p.cprCertified,
             }}
           />
         </Card>

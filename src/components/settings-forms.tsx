@@ -95,7 +95,7 @@ export function PasswordForm() {
 type SitterProfileProps = {
   profile: {
     headline: string; bio: string; hourlyRate: string; experienceYears: number; maxChildren: number;
-    serviceRadiusKm: number; area: string; skills: number[];
+    serviceRadiusKm: number; area: string; skills: number[]; languages: string; cprCertified: boolean;
   };
   allSkills: { id: number; name: string }[];
 };
@@ -136,6 +136,15 @@ export function SitterProfileForm({ profile, allSkills }: SitterProfileProps) {
             {[3, 5, 8, 10, 15, 20, 30].map((n) => <option key={n} value={n}>Up to {n} km</option>)}
           </Select>
         </Field>
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Languages you speak" htmlFor="languages" error={err("languages")} hint="Separate with commas, e.g. English, Spanish">
+          <Input id="languages" name="languages" maxLength={120} defaultValue={v?.languages ?? profile.languages} />
+        </Field>
+        <label className="flex items-center gap-3 self-end rounded-[10px] border border-line-strong px-4 py-3">
+          <input type="checkbox" name="cprCertified" defaultChecked={profile.cprCertified} className="size-4 accent-[var(--accent)]" />
+          <span className="text-sm"><span className="font-semibold">I hold a current CPR / first-aid certificate</span><br /><span className="text-ink-3">We may ask to see it.</span></span>
+        </label>
       </div>
       <fieldset>
         <legend className="text-sm font-medium text-ink-2">Skills</legend>

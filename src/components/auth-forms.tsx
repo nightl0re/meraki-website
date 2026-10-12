@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import Link from "next/link";
 import { Baby, HandHeart } from "@phosphor-icons/react";
-import { login, signup, type FormState } from "@/app/actions/auth";
+import { login, requestPasswordReset, resetPassword, signup, type FormState } from "@/app/actions/auth";
 import { SubmitButton } from "./submit-button";
 import { Alert, Field, Input, cn } from "./ui";
 
@@ -35,12 +35,12 @@ export function SignupForm({ defaultRole }: { defaultRole: "PARENT" | "SITTER" }
     <form action={action} className="space-y-5" noValidate>
       {state.error && <Alert>{state.error}</Alert>}
       <fieldset>
-        <legend className="text-sm font-medium text-ink-2">I want to</legend>
-        <div className="mt-2 grid grid-cols-2 gap-3">
+        <legend className="font-semibold">I&apos;m signing up as</legend>
+        <div className="mt-3 grid grid-cols-2 gap-3">
           {([
-            { value: "PARENT", title: "Find a sitter", Icon: Baby },
-            { value: "SITTER", title: "Work as a sitter", Icon: HandHeart },
-          ] as const).map(({ value, title, Icon }) => (
+            { value: "PARENT", title: "A parent", body: "Find and book sitters", Icon: Baby },
+            { value: "SITTER", title: "A babysitter", body: "Get booked by families", Icon: HandHeart },
+          ] as const).map(({ value, title, body, Icon }) => (
             <label
               key={value}
               className={cn(
@@ -49,8 +49,9 @@ export function SignupForm({ defaultRole }: { defaultRole: "PARENT" | "SITTER" }
               )}
             >
               <input type="radio" name="role" value={value} checked={role === value} onChange={() => setRole(value)} className="sr-only" />
-              <Icon size={24} className={role === value ? "text-accent-strong" : "text-ink-3"} aria-hidden />
-              <span className="font-medium">{title}</span>
+              <Icon size={28} weight={role === value ? "fill" : "regular"} className={role === value ? "text-accent-strong" : "text-ink-3"} aria-hidden />
+              <span className="font-semibold">{title}</span>
+              <span className="text-sm text-ink-3">{body}</span>
             </label>
           ))}
         </div>
@@ -90,10 +91,44 @@ export function SignupForm({ defaultRole }: { defaultRole: "PARENT" | "SITTER" }
       {role === "SITTER" && (
         <Alert tone="info">After signing up you&apos;ll complete your profile. Our team reviews every sitter before they appear in search.</Alert>
       )}
-      <SubmitButton size="lg" className="w-full" pendingText="Creating account">Create account</SubmitButton>
+      <SubmitButton size="lg" className="w-full" pendingText="Creating account">
+        {role === "SITTER" ? "Create babysitter account" : "Create parent account"}
+      </SubmitButton>
       <p className="text-center text-sm text-ink-3">
         Already have an account? <Link href="/login" className="font-medium text-accent-strong hover:underline">Log in</Link>
       </p>
+    </form>
+  );
+}
+
+export function ForgotPasswordForm() {
+  const [state, action] = useActionState<FormState, FormData>(requestPasswordReset, {});
+  if (state.ok) return <Alert tone="accent">{state.message}</Alert>;
+  const err = state.fieldErrors?.email?.[0];
+  return (
+    <form action={action} className="space-y-5" noValidate>
+      <Field label="Email" htmlFor="email" error={err}>
+        <Input id="email" name="email" type="email" autoComplete="email" aria-invalid={!!err} required />
+      </Field>
+      <SubmitButton size="lg" className="w-full" pendingText="Sending">Send reset link</SubmitButton>
+    </form>
+  );
+}
+
+export function ResetPasswordForm({ token }: { token: string }) {
+  const [state, action] = useActionState<FormState, FormData>(resetPassword, {});
+  const err = (k: string) => state.fieldErrors?.[k]?.[0];
+  return (
+    <form action={action} className="space-y-5" noValidate>
+      <input type="hidden" name="token" value={token} />
+      {state.error && <Alert>{state.error}</Alert>}
+      <Field label="New password" htmlFor="password" error={err("password")} hint="At least 10 characters, with a number.">
+        <Input id="password" name="password" type="password" autoComplete="new-password" aria-invalid={!!err("password")} required />
+      </Field>
+      <Field label="Repeat new password" htmlFor="confirm" error={err("confirm")}>
+        <Input id="confirm" name="confirm" type="password" autoComplete="new-password" aria-invalid={!!err("confirm")} required />
+      </Field>
+      <SubmitButton size="lg" className="w-full" pendingText="Saving">Save new password</SubmitButton>
     </form>
   );
 }

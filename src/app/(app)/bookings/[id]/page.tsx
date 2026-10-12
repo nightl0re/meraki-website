@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { cancellationTerms } from "@/lib/bookings";
-import { formatLongDate, formatMoney, formatShortDate, formatTime, formatTimeRange, timeAgo } from "@/lib/format";
+import { childAge, formatLongDate, formatMoney, formatShortDate, formatTime, formatTimeRange, timeAgo } from "@/lib/format";
 import {
   acceptAction, cancelAction, confirmAction, declineAction, messageAction, reportAction, reviewAction,
 } from "@/app/actions/bookings";
@@ -39,6 +39,7 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
       payment: { include: { paymentMethod: true } },
       payout: true,
       reviews: true,
+      children: { include: { child: true } },
       messages: { orderBy: { createdAt: "asc" }, include: { sender: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } } } },
     },
   });
@@ -80,6 +81,9 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
         )}
       </div>
 
+      {sp.hired === "1" && b.status === "ACCEPTED" && (
+        <div className="mt-6"><Alert tone="accent">You hired {other.firstName}! The booking is confirmed and {formatMoney(b.totalCents)} is on hold. Nothing is charged until after the job.</Alert></div>
+      )}
       {sp.requested === "1" && b.status === "REQUESTED" && (
         <div className="mt-6"><Alert tone="accent">Request sent! We&apos;ve placed a hold of {formatMoney(b.totalCents)} on your card. Nothing is charged yet.</Alert></div>
       )}
@@ -208,10 +212,21 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
             <dl className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Detail icon={<CalendarBlank size={18} />} label="Date">{formatLongDate(b.startsAt)}</Detail>
               <Detail icon={<Clock size={18} />} label="Time">{formatTimeRange(b.startsAt, b.endsAt)} ({Number(b.hours)} h)</Detail>
-              <Detail icon={<UsersThree size={18} />} label="Children">{b.childrenCount}</Detail>
+              <Detail icon={<UsersThree size={18} />} label="Children">
+                {b.children.length && (!isSitter || confirmedSide)
+                  ? b.children.map((c) => `${c.child.firstName} (${childAge(c.child.birthYear)})`).join(", ")
+                  : b.childrenCount}
+              </Detail>
               <Detail icon={<MapPin size={18} />} label="Address">
                 {isSitter && !confirmedSide ? `${b.parent.area} (full address after you accept)` : b.address}
               </Detail>
+              {(!isSitter || confirmedSide) && b.children.some((c) => c.child.notes) && (
+                <Detail icon={<NotePencil size={18} />} label="About the children" wide>
+                  <ul className="space-y-1">
+                    {b.children.filter((c) => c.child.notes).map((c) => <li key={c.childId}><span className="font-semibold">{c.child.firstName}:</span> {c.child.notes}</li>)}
+                  </ul>
+                </Detail>
+              )}
               {b.notes && (
                 <Detail icon={<NotePencil size={18} />} label="Notes" wide>
                   <span className="whitespace-pre-line">{b.notes}</span>

@@ -2,16 +2,16 @@
 
 /* ------------------------------------------------------------------
    Meraki design tokens, matched to the original desktop app:
-   cream background, warm brown text, coral brand colour, teal for
+   white pages with cream panels, warm brown text, coral brand colour, teal for
    trust/verified, sunny yellow for ratings. Radius system: 16px
    cards, 10px buttons and inputs, full pill for badges and chips.
 ------------------------------------------------------------------- */
 
 :root {
   /* Colours taken from the original Meraki desktop app. */
-  --bg: #f7f5f2; /* cream */
+  --bg: #ffffff; /* white page */
   --surface: #ffffff;
-  --surface-2: #fbf6f2;
+  --surface-2: #f7f5f2; /* cream panels, from the desktop app */
   --line: #eee6e0;
   --line-strong: #e1d6cf;
   --ink: #3c322d; /* warm brown */
@@ -31,35 +31,7 @@
   --danger: #c43f3f;
   --danger-soft: #fde8e8;
   --shadow: 0 1px 2px rgb(60 50 45 / 0.05), 0 10px 28px -14px rgb(154 136 128 / 0.45);
-  color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1c1715;
-    --surface: #251f1c;
-    --surface-2: #2c2521;
-    --line: #3a312c;
-    --line-strong: #4a3f39;
-    --ink: #f4ece7;
-    --ink-2: #d6c9c2;
-    --ink-3: #ab9b93;
-    --brand: #f08a66;
-    --accent: #f08a66;
-    --accent-ink: #2a1610;
-    --accent-soft: #3d2620;
-    --accent-strong: #f6a587;
-    --teal: #5ec8c4;
-    --info: #7fd6d2;
-    --info-soft: #18302f;
-    --warn: #ffd166;
-    --warn-soft: #3a2f14;
-    --sun: #ffd166;
-    --danger: #f08a8a;
-    --danger-soft: #3d1f1f;
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px -14px rgb(0 0 0 / 0.6);
-    color-scheme: dark;
-  }
+  color-scheme: light; /* the site is light-only by design */
 }
 
 @theme inline {

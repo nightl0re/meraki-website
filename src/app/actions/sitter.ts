@@ -30,11 +30,13 @@ const profileSchema = z.object({
   serviceRadiusKm: z.coerce.number().int().min(1).max(50),
   area: z.string().trim().min(2, "Enter your neighborhood or ZIP code.").max(120),
   skills: z.array(z.coerce.number().int()).max(14),
+  languages: z.string().trim().max(120).regex(/^[\p{L} ,.-]*$/u, "Use letters and commas only."),
+  cprCertified: z.boolean(),
 });
 
 export async function updateSitterProfile(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser(["SITTER"]);
-  const raw = { ...Object.fromEntries(form), skills: form.getAll("skills") };
+  const raw = { ...Object.fromEntries(form), skills: form.getAll("skills"), cprCertified: form.get("cprCertified") === "on" };
   const parsed = profileSchema.safeParse(raw);
   const values = Object.fromEntries(Object.entries(Object.fromEntries(form)).map(([k, v]) => [k, String(v)]));
   if (!parsed.success) return { fieldErrors: z.flattenError(parsed.error).fieldErrors, values };
@@ -59,6 +61,8 @@ export async function updateSitterProfile(_: FormState, form: FormData): Promise
         experienceYears: d.experienceYears,
         maxChildren: d.maxChildren,
         serviceRadiusKm: d.serviceRadiusKm,
+        languages: d.languages || "English",
+        cprCertified: d.cprCertified,
       },
     }),
     db.sitterSkill.deleteMany({ where: { sitterId: user.id } }),

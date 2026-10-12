@@ -29,5 +29,13 @@ export const config = {
   minRateCents: 1000,
   maxRateCents: 10000,
 
-  sessionDays: 30,
+  sessionDays: 30, // absolute session lifetime
+  sessionIdleDays: 7, // signed out after a week without visits
+  maxFailedLogins: 8, // then the account is locked for lockMinutes
+  lockMinutes: 15,
+  resetTokenMinutes: 30,
+
+  // Job board
+  jobMaxDaysAhead: 60,
+  jobSearchRadiusKm: 15,
 } as const;

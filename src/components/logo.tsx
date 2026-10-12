@@ -7,7 +7,7 @@ import icon from "../../public/brand/meraki-icon.png";
 export function Logo({ href = "/", size = 36 }: { href?: string; size?: number }) {
   return (
     <Link href={href} className="inline-flex items-center gap-2.5" aria-label="Meraki home">
-      <Image src={icon} alt="" width={size} height={size} priority className="rounded-[22%] shadow-sm" />
+      <Image src={icon} alt="" width={size} height={size} loading="eager" className="rounded-[22%] shadow-sm" />
       <span className="font-display text-[22px] font-bold leading-none tracking-tight text-brand">Meraki</span>
     </Link>
   );

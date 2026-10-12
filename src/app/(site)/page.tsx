@@ -60,7 +60,7 @@ export default async function Home() {
         <div className="relative mx-auto w-full max-w-md lg:mx-0 lg:justify-self-end">
           {/* Brand artwork from the original Meraki logo, with real sitters overlapping it. */}
           <div className="relative ml-auto w-[78%] overflow-hidden rounded-[28%] shadow-card">
-            <Image src={brandIcon} alt="A mother hugging a smiling toddler, the Meraki logo" priority sizes="(min-width: 1024px) 340px, 70vw" />
+            <Image src={brandIcon} alt="A mother hugging a smiling toddler, the Meraki logo" loading="eager" fetchPriority="high" sizes="(min-width: 1024px) 340px, 70vw" />
           </div>
           <div className="relative -mt-24 space-y-3 sm:-mt-32">
             {featured.slice(0, 2).map((s, i) => (

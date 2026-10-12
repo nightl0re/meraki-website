@@ -106,7 +106,8 @@ const bookingSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a date."),
   start: z.string().regex(/^\d{2}:\d{2}$/, "Pick a start time."),
   end: z.string().regex(/^\d{2}:\d{2}$/, "Pick an end time."),
-  childrenCount: z.coerce.number().int().min(1, "At least one child.").max(8),
+  childrenCount: z.coerce.number().int().min(1, "At least one child.").max(8).optional().default(1),
+  childIds: z.array(z.string().max(40)).max(8).optional().default([]),
   address: z.string().trim().min(5, "Enter the address where the sitter should come.").max(200),
   notes: z.string().trim().max(2000).optional().default(""),
   paymentMethodId: z.string().min(1, "Choose a card."),
@@ -117,7 +118,10 @@ export async function requestBooking(_: FormState, form: FormData): Promise<Form
   const values = Object.fromEntries(
     ["date", "start", "end", "childrenCount", "address", "notes", "paymentMethodId"].map((k) => [k, String(form.get(k) ?? "")]),
   );
-  const parsed = bookingSchema.safeParse(Object.fromEntries(form));
+  const parsed = bookingSchema.safeParse({ ...Object.fromEntries(form), childIds: form.getAll("childIds").map(String) });
+  if (parsed.success && form.has("childIds") === false && (await db.child.count({ where: { parentId: user.id } })) > 0) {
+    return { fieldErrors: { childIds: ["Choose at least one child."] }, values };
+  }
   if (!parsed.success) return { fieldErrors: z.flattenError(parsed.error).fieldErrors, values };
   const d = parsed.data;
 
@@ -131,7 +135,8 @@ export async function requestBooking(_: FormState, form: FormData): Promise<Form
     sitterId: d.sitterId,
     startsAt,
     endsAt,
-    childrenCount: d.childrenCount,
+    childrenCount: d.childIds.length || d.childrenCount,
+    childIds: d.childIds,
     address: d.address,
     notes: d.notes,
     paymentMethodId: d.paymentMethodId,
@@ -141,8 +146,8 @@ export async function requestBooking(_: FormState, form: FormData): Promise<Form
   // Remember the address for next time.
   await db.parentProfile.upsert({
     where: { userId: user.id },
-    update: { address: d.address, childrenCount: d.childrenCount },
-    create: { userId: user.id, address: d.address, childrenCount: d.childrenCount },
+    update: { address: d.address },
+    create: { userId: user.id, address: d.address, childrenCount: d.childIds.length || d.childrenCount },
   });
   redirect(`/bookings/${result.data!.id}?requested=1`);
 }

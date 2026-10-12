@@ -40,10 +40,14 @@ model User {
   phone        String     @default("") @db.VarChar(30)
   city         String     @default("") @db.VarChar(80)
   // Approximate home location, used for "near me" search. Never shown exactly.
-  area         String     @default("") @db.VarChar(120) // neighbourhood label, e.g. "Park Slope"
+  area         String     @default("") @db.VarChar(120) // neighborhood label, e.g. "Park Slope"
   latitude     Float?
   longitude    Float?
   avatarUrl    String?    @db.VarChar(500)
+  // Account protection: repeated wrong passwords lock the account briefly.
+  failedLogins Int        @default(0)
+  lockedUntil  DateTime?
+  lastLoginAt  DateTime?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -51,32 +55,60 @@ model User {
   sitterProfile   SitterProfile?
   parentProfile   ParentProfile?
   paymentMethods  PaymentMethod[]
-  parentBookings  Booking[]       @relation("ParentBookings")
-  sitterBookings  Booking[]       @relation("SitterBookings")
-  reviewsWritten  Review[]        @relation("ReviewAuthor")
-  reviewsReceived Review[]        @relation("ReviewSubject")
-  favorites       Favorite[]      @relation("FavoriteParent")
-  favoritedBy     Favorite[]      @relation("FavoriteSitter")
+  parentBookings  Booking[]            @relation("ParentBookings")
+  sitterBookings  Booking[]            @relation("SitterBookings")
+  reviewsWritten  Review[]             @relation("ReviewAuthor")
+  reviewsReceived Review[]             @relation("ReviewSubject")
+  favorites       Favorite[]           @relation("FavoriteParent")
+  favoritedBy     Favorite[]           @relation("FavoriteSitter")
   notifications   Notification[]
   messages        Message[]
   payouts         Payout[]
   auditLogs       AuditLog[]
+  children        Child[]
+  jobs            Job[]
+  applications    JobApplication[]
+  resetTokens     PasswordResetToken[]
 
   @@index([role, status])
   @@index([latitude, longitude])
 }
 
 model Session {
-  id        String   @id @default(cuid())
-  tokenHash String   @unique @db.Char(64) // sha256 of the cookie token
-  userId    String
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  userAgent String   @default("") @db.VarChar(255)
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique @db.Char(64) // sha256 of the cookie token
+  userId     String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  userAgent  String   @default("") @db.VarChar(255)
+  lastSeenAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([expiresAt])
+}
+
+// Single-use, short-lived password reset links. Only the hash is stored.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique @db.Char(64)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Fixed-window counters for login/signup/reset throttling. Stored in the
+// database so limits hold across server restarts and multiple instances.
+model RateLimit {
+  key     String   @id @db.VarChar(191)
+  count   Int
+  resetAt DateTime
 }
 
 model SitterProfile {
@@ -88,7 +120,10 @@ model SitterProfile {
   maxChildren       Int       @default(3)
   serviceRadiusKm   Int       @default(8) // how far the sitter will travel
   acceptingBookings Boolean   @default(true)
-  verifiedAt        DateTime?
+  verifiedAt        DateTime? // identity + references checked by an admin
+  backgroundCheckAt DateTime? // background check cleared
+  cprCertified      Boolean   @default(false)
+  languages         String    @default("English") @db.VarChar(120)
   // Cached aggregates, refreshed whenever a review is written.
   ratingAvg         Float     @default(0)
   ratingCount       Int       @default(0)
@@ -110,6 +145,77 @@ model ParentProfile {
   ratingCount   Int    @default(0)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// A child on a family profile, so sitters know who they're looking after.
+model Child {
+  id        String   @id @default(cuid())
+  parentId  String
+  firstName String   @db.VarChar(60)
+  birthYear Int
+  notes     String   @default("") @db.VarChar(500) // allergies, routines, needs
+  createdAt DateTime @default(now())
+
+  parent   User           @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  bookings BookingChild[]
+
+  @@index([parentId])
+}
+
+enum JobStatus {
+  OPEN
+  FILLED
+  CLOSED
+}
+
+// A parent posts a job; nearby sitters apply; the parent hires one, which
+// creates a confirmed booking with a card hold.
+model Job {
+  id             String    @id @default(cuid())
+  parentId       String
+  title          String    @db.VarChar(120)
+  description    String    @default("") @db.VarChar(2000)
+  startsAt       DateTime
+  endsAt         DateTime
+  childrenCount  Int
+  maxRateCents   Int
+  area           String    @db.VarChar(120)
+  latitude       Float?
+  longitude      Float?
+  status         JobStatus @default(OPEN)
+  hiredBookingId String?   @unique
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  parent       User             @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  applications JobApplication[]
+  hiredBooking Booking?         @relation(fields: [hiredBookingId], references: [id])
+
+  @@index([status, startsAt])
+  @@index([latitude, longitude])
+  @@index([parentId])
+}
+
+enum ApplicationStatus {
+  APPLIED
+  WITHDRAWN
+  DECLINED
+  HIRED
+}
+
+model JobApplication {
+  id        String            @id @default(cuid())
+  jobId     String
+  sitterId  String
+  message   String            @default("") @db.VarChar(1000)
+  status    ApplicationStatus @default(APPLIED)
+  createdAt DateTime          @default(now())
+
+  job    Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  sitter User @relation(fields: [sitterId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, sitterId])
+  @@index([sitterId, status])
 }
 
 model Skill {
@@ -179,16 +285,29 @@ model Booking {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  parent   User      @relation("ParentBookings", fields: [parentId], references: [id])
-  sitter   User      @relation("SitterBookings", fields: [sitterId], references: [id])
+  parent   User           @relation("ParentBookings", fields: [parentId], references: [id])
+  sitter   User           @relation("SitterBookings", fields: [sitterId], references: [id])
   payment  Payment?
   payout   Payout?
   reviews  Review[]
   messages Message[]
+  children BookingChild[]
+  job      Job?
 
   @@index([sitterId, startsAt])
   @@index([parentId, startsAt])
   @@index([status, endsAt])
+}
+
+model BookingChild {
+  bookingId String
+  childId   String
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  child   Child   @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@id([bookingId, childId])
+  @@index([childId])
 }
 
 model PaymentMethod {

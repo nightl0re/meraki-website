@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Briefcase, CheckCircle, Clock, Heart, MapPin, SealCheck, UsersThree } from "@phosphor-icons/react/ssr";
+import { Briefcase, CheckCircle, Clock, FirstAid, Heart, MapPin, SealCheck, ShieldCheck, Translate, UsersThree } from "@phosphor-icons/react/ssr";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { config } from "@/lib/config";
@@ -34,7 +34,7 @@ export default async function SitterProfilePage({ params }: PageProps<"/sitters/
   if (!s || !s.sitterProfile) notFound();
   const p = s.sitterProfile;
 
-  const [reviews, favorite] = await Promise.all([
+  const [reviews, favorite, responses, repeat] = await Promise.all([
     db.review.findMany({
       where: { subjectId: s.id, direction: "PARENT_TO_SITTER" },
       orderBy: { createdAt: "desc" },
@@ -44,7 +44,19 @@ export default async function SitterProfilePage({ params }: PageProps<"/sitters/
     user?.role === "PARENT"
       ? db.favorite.findUnique({ where: { parentId_sitterId: { parentId: user.id, sitterId: s.id } } })
       : null,
+    db.booking.findMany({
+      where: { sitterId: s.id, respondedAt: { not: null }, job: null },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+      select: { createdAt: true, respondedAt: true },
+    }),
+    db.booking.groupBy({ by: ["parentId"], where: { sitterId: s.id, status: "COMPLETED" }, _count: true }),
   ]);
+  const repeatFamilies = repeat.filter((r) => r._count > 1).length;
+  const avgResponseMin = responses.length
+    ? responses.reduce((n, r) => n + (r.respondedAt!.getTime() - r.createdAt.getTime()), 0) / responses.length / 60_000
+    : null;
+  const responseLabel = avgResponseMin == null ? "New" : avgResponseMin < 60 ? "Within an hour" : avgResponseMin < 24 * 60 ? `About ${Math.round(avgResponseMin / 60)} h` : "Within a day";
 
   const byDay = WEEKDAYS.map((name, i) => ({ name, slots: p.availability.filter((a) => a.weekday === i) }));
   const canBook = !user || user.role === "PARENT";
@@ -62,6 +74,12 @@ export default async function SitterProfilePage({ params }: PageProps<"/sitters/
                 <SealCheck size={24} weight="fill" className="text-info" aria-label="Verified sitter" />
               </h1>
               <p className="mt-1 text-lg text-ink-2">{p.headline}</p>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {p.verifiedAt && <Badge tone="info"><SealCheck size={14} weight="fill" aria-hidden />ID verified</Badge>}
+                {p.backgroundCheckAt && <Badge tone="info"><ShieldCheck size={14} weight="fill" aria-hidden />Background check</Badge>}
+                {p.cprCertified && <Badge tone="info"><FirstAid size={14} weight="fill" aria-hidden />CPR certified</Badge>}
+                {p.languages && <Badge><Translate size={14} aria-hidden />{p.languages}</Badge>}
+              </div>
               <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-ink-3">
                 <span className="inline-flex items-center gap-1.5"><MapPin size={16} aria-hidden />{s.area}, travels up to {p.serviceRadiusKm} km</span>
                 <Rating avg={p.ratingAvg} count={p.ratingCount} />
@@ -73,8 +91,8 @@ export default async function SitterProfilePage({ params }: PageProps<"/sitters/
           <dl className="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-4">
             <Fact icon={<Briefcase size={18} />} label="Experience" value={`${p.experienceYears} ${p.experienceYears === 1 ? "year" : "years"}`} />
             <Fact icon={<CheckCircle size={18} />} label="Jobs on Meraki" value={String(p.completedJobs)} />
-            <Fact icon={<UsersThree size={18} />} label="Max children" value={String(p.maxChildren)} />
-            <Fact icon={<SealCheck size={18} />} label="Verified" value={p.verifiedAt ? formatShortDate(p.verifiedAt) : "No"} />
+            <Fact icon={<Clock size={18} />} label="Response time" value={responseLabel} />
+            <Fact icon={<UsersThree size={18} />} label="Repeat families" value={String(repeatFamilies)} />
           </dl>
 
           <section className="mt-10">

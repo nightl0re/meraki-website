@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { toDateInput } from "@/lib/time";
+import { childAge } from "@/lib/format";
 import { BookingForm } from "@/components/booking-form";
 import { CardForm } from "@/components/card-form";
 import { Avatar, Card, Rating } from "@/components/ui";
@@ -26,12 +27,13 @@ export default async function BookPage({ params, searchParams }: PageProps<"/boo
   });
   if (!sitter?.sitterProfile) notFound();
 
-  const [cards, profile] = await Promise.all([
+  const [cards, profile, family] = await Promise.all([
     db.paymentMethod.findMany({
       where: { userId: user.id, removedAt: null },
       orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
     }),
     db.parentProfile.findUnique({ where: { userId: user.id } }),
+    db.child.findMany({ where: { parentId: user.id }, orderBy: { birthYear: "desc" } }),
   ]);
 
   const p = sitter.sitterProfile;
@@ -85,6 +87,7 @@ export default async function BookPage({ params, searchParams }: PageProps<"/boo
             address: profile?.address ?? "",
             childrenCount: Math.min(profile?.childrenCount ?? 1, p.maxChildren),
           }}
+          family={family.map((c) => ({ id: c.id, firstName: c.firstName, age: childAge(c.birthYear) }))}
           limits={{ minDate, maxDate, freeCancelHours: config.freeCancelHours, responseHours: config.sitterResponseHours }}
         />
       )}

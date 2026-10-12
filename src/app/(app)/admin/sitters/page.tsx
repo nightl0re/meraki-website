@@ -56,9 +56,13 @@ export default async function SitterApprovalsPage() {
                     )}
                   </div>
                   <div className="flex shrink-0 gap-2 md:flex-col">
-                    <form action={reviewSitter}>
+                    <form action={reviewSitter} className="space-y-2">
                       <input type="hidden" name="userId" value={u.id} />
                       <input type="hidden" name="decision" value="approve" />
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" name="backgroundCheck" className="size-4 accent-[var(--accent)]" />
+                        Background check cleared
+                      </label>
                       <button className={buttonClass("primary", "md", "w-full")}>Approve</button>
                     </form>
                     <form action={reviewSitter}>

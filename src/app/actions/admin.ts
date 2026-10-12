@@ -17,7 +17,10 @@ export async function reviewSitter(form: FormData) {
   if (decision === "approve") {
     await db.$transaction([
       db.user.update({ where: { id }, data: { status: "ACTIVE" } }),
-      db.sitterProfile.update({ where: { userId: id }, data: { verifiedAt: new Date() } }),
+      db.sitterProfile.update({
+        where: { userId: id },
+        data: { verifiedAt: new Date(), ...(form.get("backgroundCheck") === "on" ? { backgroundCheckAt: new Date() } : {}) },
+      }),
     ]);
     await notify(id, "You're verified!", "Your profile is now live. Families nearby can find and book you.", "/sitter");
   } else {

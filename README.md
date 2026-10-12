@@ -9,12 +9,18 @@ This is the web rebuild of the original Meraki Windows Forms app. It keeps the b
 ## Features
 
 **Parents**
+- Home dashboard like the original app: greeting, quick actions, things that need attention, upcoming bookings, "Book again", family and payment cards, notifications.
+- Family profile with children (first name, birth year, notes such as allergies); pick which children each booking is for.
+- Post a job with a time and budget; nearby sitters are notified and apply; compare applicants and hire in one click.
 - Search by address, ZIP code, neighborhood or "use my location". Results show sitters who travel to you, nearest first (OpenStreetMap geocoding, cached in the database).
 - Browse by neighborhood, filter by day, skill, price and rating.
 - Book inside a sitter's real weekly availability. The price is shown live and nothing is charged up front.
 - Message the sitter on each booking, save favorite sitters, see receipts, leave reviews.
 
 **Sitters**
+- Home dashboard like the original app: earnings, bookings, rating and hours tiles; accept/decline requests inline; month calendar schedule; jobs near you; profile card with badges and a profile-strength checklist.
+- Job board: browse open jobs within your travel distance, apply with a message, track applications.
+- Trust badges: ID verified, background check, CPR certified, languages; public response time and repeat families.
 - Profile with photo, bio, skills, hourly rate, max children and travel radius.
 - Weekly availability editor; pause new bookings at any time.
 - Accept or decline requests, see the schedule, earnings and payouts. Sitters keep 100% of their rate.
@@ -51,6 +57,21 @@ Test cards (any future expiry, any CVC):
 | 4000 0000 0000 0002 | Declined |
 | 4000 0000 0000 9995 | Insufficient funds |
 
+## Pages for visitors
+
+- `/about`: about Meraki and how it works for parents (search or post a job, booking, safety, pricing, FAQ).
+- `/about/sitters`: how Meraki works for babysitters (onboarding, verification, requests and jobs, pay, expectations, FAQ).
+
+## Security
+
+- Passwords hashed with bcrypt (cost 12), with a shared policy (length, letters and digits, common passwords blocked).
+- Sessions: random token in an httpOnly, SameSite cookie; only its SHA-256 hash is stored. Rotated on login, 30-day absolute and 7-day idle expiry, all sessions revoked on password change/reset or suspension.
+- Account lockout after 8 wrong passwords (15 minutes) plus database-backed rate limits on login, sign-up and password reset.
+- Password reset with single-use, 30-minute, hashed tokens; responses never reveal whether an email exists.
+- Every server action re-checks the session, role and ownership; redirects after login only go to pages that role may open.
+- Headers: Content-Security-Policy, HSTS (production), X-Frame-Options/frame-ancestors, nosniff, Referrer-Policy, Permissions-Policy, COOP.
+- Card numbers and CVCs are never stored; uploads are type-checked by magic bytes and size-limited; addresses and phone numbers are only shared after a booking is accepted.
+
 ## Tech stack
 
 - **Next.js 16** (App Router, Server Components, Server Actions) + **React 19** + **TypeScript**
@@ -85,7 +106,7 @@ Demo accounts (password `Meraki-demo-2026`):
 | --- | --- |
 | `npm run dev` | Development server |
 | `npm run build` / `npm start` | Production build / server |
-| `npm test` | Booking and payment flow tests against the database |
+| `npm test` | Booking, payment, job board and security tests against the database |
 | `npm run lint` / `npm run typecheck` | ESLint / TypeScript |
 | `npm run db:migrate` | Apply schema changes in development |
 | `npm run db:deploy` | Apply migrations in production |
@@ -119,4 +140,4 @@ tests/                 booking flow tests
 - Replace the simulated payment provider with a real one (see above).
 - Profile photos are stored on local disk in `uploads/`; use object storage (S3, R2) when running more than one server.
 - The login rate limiter is in memory; use Redis when running more than one server.
-- Add transactional email (booking requests, confirmations, receipts). Notifications are currently in-app.
+- Connect an email provider in `src/lib/mail.ts` (Resend, Postmark, SES...) and set `APP_URL`. Until then, password reset emails are printed to the server console in development, and notifications are in-app.

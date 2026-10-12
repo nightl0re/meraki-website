@@ -16,6 +16,7 @@ type Props = {
   sitter: { id: string; firstName: string; rateCents: number; maxChildren: number; availability: Window[] };
   cards: { id: string; label: string; exp: string; isDefault: boolean }[];
   defaults: { date: string; address: string; childrenCount: number };
+  family: { id: string; firstName: string; age: string }[];
   limits: { minDate: string; maxDate: string; freeCancelHours: number; responseHours: number };
 };
 
@@ -30,7 +31,7 @@ const weekdayOf = (date: string) => {
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 };
 
-export function BookingForm({ sitter, cards, defaults, limits }: Props) {
+export function BookingForm({ sitter, cards, defaults, limits, family }: Props) {
   const [state, action] = useActionState<FormState, FormData>(requestBooking, {});
   const v = state.values;
   const err = (k: string) => state.fieldErrors?.[k]?.[0];
@@ -115,11 +116,29 @@ export function BookingForm({ sitter, cards, defaults, limits }: Props) {
           <Field label="Address" htmlFor="address" error={err("address")} hint="Only shared with the sitter once they accept.">
             <Input id="address" name="address" autoComplete="street-address" defaultValue={v?.address ?? defaults.address} aria-invalid={!!err("address")} required />
           </Field>
-          <Field label="Number of children" htmlFor="childrenCount" error={err("childrenCount")} className="max-w-48">
-            <Select id="childrenCount" name="childrenCount" defaultValue={v?.childrenCount ?? String(defaults.childrenCount)}>
-              {Array.from({ length: sitter.maxChildren }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
-            </Select>
-          </Field>
+          {family.length > 0 ? (
+            <fieldset>
+              <legend className="text-sm font-medium text-ink-2">Who&apos;s being looked after?</legend>
+              {err("childIds") && <p className="mt-1 text-sm text-danger">{err("childIds")}</p>}
+              <div className="mt-2 flex flex-wrap gap-2">
+                {family.map((c) => (
+                  <label key={c.id} className="cursor-pointer">
+                    <input type="checkbox" name="childIds" value={c.id} defaultChecked className="peer sr-only" />
+                    <span className="inline-flex h-10 items-center gap-2 rounded-full border border-line-strong px-4 text-sm transition-colors peer-checked:border-accent peer-checked:bg-accent-soft peer-checked:text-accent-strong peer-focus-visible:ring-2 peer-focus-visible:ring-accent">
+                      <span className="font-semibold">{c.firstName}</span><span className="text-ink-3">{c.age}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-ink-3">{sitter.firstName} looks after up to {sitter.maxChildren} children at once.</p>
+            </fieldset>
+          ) : (
+            <Field label="Number of children" htmlFor="childrenCount" error={err("childrenCount")} className="max-w-48" hint="Tip: add your children in Family profile.">
+              <Select id="childrenCount" name="childrenCount" defaultValue={v?.childrenCount ?? String(defaults.childrenCount)}>
+                {Array.from({ length: sitter.maxChildren }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
+              </Select>
+            </Field>
+          )}
           <Field label="Notes for the sitter" htmlFor="notes" hint="Ages, bedtime, allergies, anything they should know.">
             <Textarea id="notes" name="notes" rows={4} defaultValue={v?.notes} maxLength={2000} />
           </Field>
