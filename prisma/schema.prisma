@@ -1,0 +1,350 @@
+// Meraki database schema.
+//
+// Conventions:
+// - Money is always stored as integer cents (never floats).
+// - Timestamps are UTC DateTimes; bookings store an absolute start/end instead of
+//   separate date + time + duration columns.
+// - Card numbers and CVVs are never stored. A payment method is a provider token
+//   plus the display data (brand, last 4, expiry).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PARENT
+  SITTER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  PENDING_REVIEW // sitters wait here until an admin verifies them
+  REJECTED
+  SUSPENDED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique @db.VarChar(191)
+  passwordHash String     @db.VarChar(100)
+  role         Role
+  status       UserStatus @default(ACTIVE)
+  firstName    String     @db.VarChar(60)
+  lastName     String     @db.VarChar(60)
+  phone        String     @default("") @db.VarChar(30)
+  city         String     @default("") @db.VarChar(80)
+  // Approximate home location, used for "near me" search. Never shown exactly.
+  area         String     @default("") @db.VarChar(120) // neighbourhood label, e.g. "Park Slope"
+  latitude     Float?
+  longitude    Float?
+  avatarUrl    String?    @db.VarChar(500)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  sessions        Session[]
+  sitterProfile   SitterProfile?
+  parentProfile   ParentProfile?
+  paymentMethods  PaymentMethod[]
+  parentBookings  Booking[]       @relation("ParentBookings")
+  sitterBookings  Booking[]       @relation("SitterBookings")
+  reviewsWritten  Review[]        @relation("ReviewAuthor")
+  reviewsReceived Review[]        @relation("ReviewSubject")
+  favorites       Favorite[]      @relation("FavoriteParent")
+  favoritedBy     Favorite[]      @relation("FavoriteSitter")
+  notifications   Notification[]
+  messages        Message[]
+  payouts         Payout[]
+  auditLogs       AuditLog[]
+
+  @@index([role, status])
+  @@index([latitude, longitude])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique @db.Char(64) // sha256 of the cookie token
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userAgent String   @default("") @db.VarChar(255)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model SitterProfile {
+  userId            String    @id
+  headline          String    @default("") @db.VarChar(120)
+  bio               String    @default("") @db.VarChar(2000)
+  hourlyRateCents   Int       @default(1800)
+  experienceYears   Int       @default(0)
+  maxChildren       Int       @default(3)
+  serviceRadiusKm   Int       @default(8) // how far the sitter will travel
+  acceptingBookings Boolean   @default(true)
+  verifiedAt        DateTime?
+  // Cached aggregates, refreshed whenever a review is written.
+  ratingAvg         Float     @default(0)
+  ratingCount       Int       @default(0)
+  completedJobs     Int       @default(0)
+
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skills       SitterSkill[]
+  availability Availability[]
+
+  @@index([hourlyRateCents])
+}
+
+model ParentProfile {
+  userId        String @id
+  about         String @default("") @db.VarChar(2000)
+  childrenCount Int    @default(1)
+  address       String @default("") @db.VarChar(200)
+  ratingAvg     Float  @default(0)
+  ratingCount   Int    @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Skill {
+  id      Int           @id @default(autoincrement())
+  slug    String        @unique @db.VarChar(60)
+  name    String        @unique @db.VarChar(60)
+  sitters SitterSkill[]
+}
+
+model SitterSkill {
+  sitterId String
+  skillId  Int
+
+  sitter SitterProfile @relation(fields: [sitterId], references: [userId], onDelete: Cascade)
+  skill  Skill         @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([sitterId, skillId])
+  @@index([skillId])
+}
+
+// Weekly recurring window, e.g. Monday 17:00-22:00. Minutes from midnight.
+model Availability {
+  id          String @id @default(cuid())
+  sitterId    String
+  weekday     Int // 0 = Sunday ... 6 = Saturday
+  startMinute Int
+  endMinute   Int
+
+  sitter SitterProfile @relation(fields: [sitterId], references: [userId], onDelete: Cascade)
+
+  @@index([sitterId, weekday])
+}
+
+enum BookingStatus {
+  REQUESTED // waiting for the sitter; card is authorized (held)
+  ACCEPTED // sitter said yes; job upcoming or awaiting parent confirmation
+  DECLINED
+  EXPIRED // sitter never answered
+  CANCELLED
+  COMPLETED // parent confirmed (or auto-confirmed); payment captured
+  DISPUTED // parent reported a problem; admin decides
+}
+
+model Booking {
+  id              String        @id @default(cuid())
+  code            String        @unique @db.VarChar(12) // short human reference, e.g. MK-7Q2F9C
+  parentId        String
+  sitterId        String
+  startsAt        DateTime
+  endsAt          DateTime
+  childrenCount   Int
+  address         String        @db.VarChar(200)
+  notes           String        @default("") @db.VarChar(2000)
+  status          BookingStatus @default(REQUESTED)
+  hourlyRateCents Int
+  hours           Decimal       @db.Decimal(4, 2)
+  subtotalCents   Int
+  serviceFeeCents Int
+  totalCents      Int
+  respondBy       DateTime
+  respondedAt     DateTime?
+  confirmedAt     DateTime?
+  cancelledAt     DateTime?
+  cancelledById   String?
+  cancelReason    String        @default("") @db.VarChar(300)
+  disputeReason   String        @default("") @db.VarChar(2000)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  parent   User      @relation("ParentBookings", fields: [parentId], references: [id])
+  sitter   User      @relation("SitterBookings", fields: [sitterId], references: [id])
+  payment  Payment?
+  payout   Payout?
+  reviews  Review[]
+  messages Message[]
+
+  @@index([sitterId, startsAt])
+  @@index([parentId, startsAt])
+  @@index([status, endsAt])
+}
+
+model PaymentMethod {
+  id          String    @id @default(cuid())
+  userId      String
+  providerRef String    @unique @db.VarChar(64) // token from the payment provider
+  brand       String    @db.VarChar(20)
+  last4       String    @db.Char(4)
+  expMonth    Int
+  expYear     Int
+  holderName  String    @db.VarChar(100)
+  isDefault   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  removedAt   DateTime? // soft delete: old payments still reference it
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments Payment[]
+
+  @@index([userId])
+}
+
+enum PaymentStatus {
+  AUTHORIZED // funds held, not charged
+  CAPTURED // charged
+  VOIDED // hold released, nothing charged
+  PARTIALLY_REFUNDED
+  REFUNDED
+  FAILED
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  bookingId       String        @unique
+  paymentMethodId String
+  providerRef     String        @unique @db.VarChar(64)
+  amountCents     Int // amount authorized
+  capturedCents   Int           @default(0)
+  refundedCents   Int           @default(0)
+  status          PaymentStatus
+  failureReason   String        @default("") @db.VarChar(200)
+  authorizedAt    DateTime      @default(now())
+  capturedAt      DateTime?
+  voidedAt        DateTime?
+  refundedAt      DateTime?
+
+  booking       Booking       @relation(fields: [bookingId], references: [id])
+  paymentMethod PaymentMethod @relation(fields: [paymentMethodId], references: [id])
+
+  @@index([status])
+}
+
+enum PayoutStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+model Payout {
+  id          String       @id @default(cuid())
+  sitterId    String
+  bookingId   String       @unique
+  amountCents Int
+  status      PayoutStatus @default(PENDING)
+  createdAt   DateTime     @default(now())
+  paidAt      DateTime?
+
+  sitter  User    @relation(fields: [sitterId], references: [id])
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@index([sitterId, status])
+}
+
+enum ReviewDirection {
+  PARENT_TO_SITTER
+  SITTER_TO_PARENT
+}
+
+model Review {
+  id        String          @id @default(cuid())
+  bookingId String
+  authorId  String
+  subjectId String
+  direction ReviewDirection
+  rating    Int // 1-5
+  comment   String          @default("") @db.VarChar(2000)
+  createdAt DateTime        @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  author  User    @relation("ReviewAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  subject User    @relation("ReviewSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, direction])
+  @@index([subjectId, createdAt])
+}
+
+model Favorite {
+  parentId  String
+  sitterId  String
+  createdAt DateTime @default(now())
+
+  parent User @relation("FavoriteParent", fields: [parentId], references: [id], onDelete: Cascade)
+  sitter User @relation("FavoriteSitter", fields: [sitterId], references: [id], onDelete: Cascade)
+
+  @@id([parentId, sitterId])
+  @@index([sitterId])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  bookingId String
+  senderId  String
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  sender  User    @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, createdAt])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  title     String    @db.VarChar(120)
+  body      String    @default("") @db.VarChar(300)
+  href      String    @default("") @db.VarChar(200)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+// Every admin action and money movement is recorded here.
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String   @db.VarChar(60)
+  targetType String   @db.VarChar(30)
+  targetId   String   @db.VarChar(40)
+  detail     String   @default("") @db.VarChar(500)
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([targetType, targetId])
+  @@index([createdAt])
+}
+
+// Address -> coordinates lookups, cached so we call the geocoder at most once
+// per distinct query (OpenStreetMap Nominatim allows ~1 request/second).
+model GeocodeCache {
+  query     String   @id @db.VarChar(191) // normalised, lower-case
+  label     String   @db.VarChar(300)
+  latitude  Float?
+  longitude Float?
+  createdAt DateTime @default(now())
+}

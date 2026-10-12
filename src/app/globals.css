@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------
+   Meraki design tokens, matched to the original desktop app:
+   cream background, warm brown text, coral brand colour, teal for
+   trust/verified, sunny yellow for ratings. Radius system: 16px
+   cards, 10px buttons and inputs, full pill for badges and chips.
+------------------------------------------------------------------- */
+
+:root {
+  /* Colours taken from the original Meraki desktop app. */
+  --bg: #f7f5f2; /* cream */
+  --surface: #ffffff;
+  --surface-2: #fbf6f2;
+  --line: #eee6e0;
+  --line-strong: #e1d6cf;
+  --ink: #3c322d; /* warm brown */
+  --ink-2: #5e504a;
+  --ink-3: #7a6a63;
+  --brand: #e8714a; /* Meraki coral, logo and highlights */
+  --accent: #c4532e; /* deeper coral so white button text stays readable */
+  --accent-ink: #ffffff;
+  --accent-soft: #fdeee8; /* peach */
+  --accent-strong: #a8431f;
+  --teal: #5ec8c4;
+  --info: #2a7070;
+  --info-soft: #e1f0ef;
+  --warn: #8a5a00;
+  --warn-soft: #fff4d9;
+  --sun: #ffd166;
+  --danger: #c43f3f;
+  --danger-soft: #fde8e8;
+  --shadow: 0 1px 2px rgb(60 50 45 / 0.05), 0 10px 28px -14px rgb(154 136 128 / 0.45);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1715;
+    --surface: #251f1c;
+    --surface-2: #2c2521;
+    --line: #3a312c;
+    --line-strong: #4a3f39;
+    --ink: #f4ece7;
+    --ink-2: #d6c9c2;
+    --ink-3: #ab9b93;
+    --brand: #f08a66;
+    --accent: #f08a66;
+    --accent-ink: #2a1610;
+    --accent-soft: #3d2620;
+    --accent-strong: #f6a587;
+    --teal: #5ec8c4;
+    --info: #7fd6d2;
+    --info-soft: #18302f;
+    --warn: #ffd166;
+    --warn-soft: #3a2f14;
+    --sun: #ffd166;
+    --danger: #f08a8a;
+    --danger-soft: #3d1f1f;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px -14px rgb(0 0 0 / 0.6);
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-strong: var(--accent-strong);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-brand: var(--brand);
+  --color-teal: var(--teal);
+  --color-sun: var(--sun);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --shadow-card: var(--shadow);
+  --font-sans: var(--font-nunito);
+  --font-display: var(--font-quicksand);
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-nunito), "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Headings use the rounded face from the Meraki wordmark. */
+h1, h2, h3, .font-display {
+  font-family: var(--font-quicksand), var(--font-nunito), sans-serif;
+  letter-spacing: -0.01em;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Numbers line up in tables and money columns. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
