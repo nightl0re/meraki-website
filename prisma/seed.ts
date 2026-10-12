@@ -7,6 +7,7 @@
 
 import { PrismaClient, type BookingStatus } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { createSampleAccounts } from "./sample-accounts";
 
 const db = new PrismaClient();
 const PASSWORD = "Meraki-demo-2026";
@@ -344,6 +345,9 @@ async function main() {
       body: "Find a sitter near you, request a time, and you're only charged after the job.", href: "/sitters",
     },
   });
+
+  // Easy-to-remember accounts for manual testing (see prisma/sample-accounts.ts).
+  await createSampleAccounts(db);
 
   console.log(`Seeded ${sitterIds.length} sitters, ${parentIds.length} parents. Password: ${PASSWORD}`);
 }
