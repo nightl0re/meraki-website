@@ -1,0 +1,653 @@
+From 4268afb2936d16937587df9bb8bbfbdbef2b3b43 Mon Sep 17 00:00:00 2001
+From: Meraki team <iskandarqosimov120@gmail.com>
+Date: Thu, 22 Oct 2026 15:34:48 +0500
+Subject: [PATCH] Localize Meraki for Malaysia and add a "Why Meraki" section
+
+- Default currency MYR, locale en-MY, time zone Asia/Kuala_Lumpur and
+  geocoder country "my"; other countries only change env variables
+- Demo data and sample accounts moved from New York to Klang Valley
+  neighbourhoods with Malaysian names, +60 phones and local addresses
+- "ZIP code" wording changed to "postcode"; rate label uses the set currency
+- About page: problem / solution / who it helps, Malaysia launch and
+  worldwide note, payment methods FAQ (FPX, Touch 'n Go, GrabPay planned)
+- Tests use midday Malaysia time so slots never cross midnight
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LNRskiV98Eb26e7Vwx8sD8
+---
+ README.md                          |   6 +-
+ prisma/sample-accounts.ts          |  30 +++----
+ prisma/schema.prisma               |   2 +-
+ prisma/seed.ts                     | 124 +++++++++++++++--------------
+ src/app/(site)/about/page.tsx      |  31 +++++++-
+ src/app/(site)/sitters/page.tsx    |   2 +-
+ src/app/actions/account.ts         |   2 +-
+ src/app/actions/auth.ts            |   2 +-
+ src/app/actions/sitter.ts          |   4 +-
+ src/components/auth-forms.tsx      |   4 +-
+ src/components/location-search.tsx |   2 +-
+ src/components/settings-forms.tsx  |   7 +-
+ src/lib/config.ts                  |   8 +-
+ src/lib/geo.ts                     |   3 +-
+ tests/booking-flow.test.ts         |   6 +-
+ tests/jobs-and-security.test.ts    |   2 +-
+ 16 files changed, 136 insertions(+), 99 deletions(-)
+
+diff --git a/README.md b/README.md
+index 1f2f7de..891d4ce 100644
+--- a/README.md
++++ b/README.md
+@@ -2,7 +2,7 @@
+ 
+ # Meraki: caring babysitters, near you
+ 
+-Meraki is a babysitting marketplace. Parents find verified sitters near their address, request a time, and are only charged after the job. Sitters set their own rate, hours and travel distance. An admin team verifies sitters, settles disputes and sends payouts.
++Meraki is a babysitting marketplace, launching first in the Klang Valley, Malaysia. Currency, language, time zone and geocoder country are settings, so it can run in any country. Parents find verified sitters near their address, request a time, and are only charged after the job. Sitters set their own rate, hours and travel distance. An admin team verifies sitters, settles disputes and sends payouts.
+ 
+ This is the web rebuild of the original Meraki Windows Forms app. It keeps the brand, colors and features of the desktop app and redesigns the structure, booking flow and payments.
+ 
+@@ -91,7 +91,7 @@ npm install
+ npx prisma dev --name meraki --detach   # starts a local Postgres, prints its TCP URL
+ cp .env.example .env        # set DATABASE_URL to that postgres:// URL (and the other values)
+ npm run db:migrate          # create the tables
+-npm run db:seed             # demo data in New York neighborhoods
++npm run db:seed             # demo data in Klang Valley neighbourhoods (Malaysia)
+ npm run dev                 # http://localhost:3000
+ ```
+ 
+@@ -139,7 +139,7 @@ tests/                 booking flow tests
+ ## Deploying to Vercel
+ 
+ 1. In the Vercel project, open **Storage** and add **Prisma Postgres**, then **Blob**, and connect both to the project. This adds `DATABASE_URL` (or a similarly named Postgres URL) and `BLOB_READ_WRITE_TOKEN` to the environment variables. `DATABASE_URL` must be the direct `postgres://` connection string.
+-2. In **Settings → Environment Variables**, add `APP_TIMEZONE`, `NEXT_PUBLIC_CURRENCY`, `NEXT_PUBLIC_LOCALE`, `GEOCODER_COUNTRY`, `GEOCODER_USER_AGENT`, `CRON_SECRET` (a long random string) and `APP_URL` (your site's URL). See `.env.example`.
++2. In **Settings → Environment Variables**, add `GEOCODER_USER_AGENT`, `CRON_SECRET` (a long random string) and `APP_URL` (your site's URL). The country settings default to Malaysia (`NEXT_PUBLIC_CURRENCY=MYR`, `NEXT_PUBLIC_LOCALE=en-MY`, `APP_TIMEZONE=Asia/Kuala_Lumpur`, `GEOCODER_COUNTRY=my`); set them only to launch in another country.
+ 3. Redeploy. The `vercel-build` script runs `prisma migrate deploy` before `next build`, so the tables are created automatically. Pages are never prerendered, so the build doesn't touch the database.
+ 4. Optional demo data: on your computer, run `npm run db:seed` with `DATABASE_URL` pointing at the production database. This **wipes** that database first and creates demo accounts with known passwords, so only do it for a demo site.
+ 
+diff --git a/prisma/sample-accounts.ts b/prisma/sample-accounts.ts
+index e447e1c..3e65ca7 100644
+--- a/prisma/sample-accounts.ts
++++ b/prisma/sample-accounts.ts
+@@ -21,7 +21,7 @@ export async function createSampleAccounts(db: PrismaClient) {
+   const year = new Date().getFullYear();
+ 
+   const base = (email: string) => ({
+-    passwordHash, status: "ACTIVE" as const, failedLogins: 0, lockedUntil: null, city: "New York",
++    passwordHash, status: "ACTIVE" as const, failedLogins: 0, lockedUntil: null, city: "Kuala Lumpur",
+     email,
+   });
+ 
+@@ -48,23 +48,23 @@ export async function createSampleAccounts(db: PrismaClient) {
+   // --- parents ---
+   await db.user.create({
+     data: {
+-      ...base(emails[1]), role: "PARENT", firstName: "Sarah", lastName: "Collins",
+-      phone: "+1 (718) 555-0142", area: "Park Slope", latitude: 40.6725, longitude: -73.9790,
+-      parentProfile: { create: { address: "214 7th Ave, Park Slope, New York", childrenCount: 2, about: "Two busy kids who love the park and Lego." } },
++      ...base(emails[1]), role: "PARENT", firstName: "Sarah", lastName: "Tan",
++      phone: "+60 12-555 0142", area: "Bangsar", latitude: 3.1290, longitude: 101.6720,
++      parentProfile: { create: { address: "No. 12, Jalan Telawi 3, Bangsar, Kuala Lumpur", childrenCount: 2, about: "Two busy kids who love the park and Lego." } },
+       children: { create: [
+         { firstName: "Lily", birthYear: year - 5, notes: "Allergic to strawberries. Bedtime 7:30." },
+         { firstName: "Max", birthYear: year - 2, notes: "Naps after lunch." },
+       ] },
+-      paymentMethods: { create: { providerRef: "pm_sim_sample_sarah", brand: "Visa", last4: "4242", expMonth: 9, expYear: year + 3, holderName: "Sarah Collins", isDefault: true } },
++      paymentMethods: { create: { providerRef: "pm_sim_sample_sarah", brand: "Visa", last4: "4242", expMonth: 9, expYear: year + 3, holderName: "Sarah Tan", isDefault: true } },
+     },
+   });
+   await db.user.create({
+     data: {
+-      ...base(emails[2]), role: "PARENT", firstName: "Daniel", lastName: "Kim",
+-      phone: "+1 (718) 555-0187", area: "Brooklyn Heights", latitude: 40.6955, longitude: -73.9930,
+-      parentProfile: { create: { address: "58 Remsen St, Brooklyn Heights, New York", childrenCount: 1, about: "One curious 7-year-old who loves science." } },
++      ...base(emails[2]), role: "PARENT", firstName: "Daniel", lastName: "Wong", city: "Petaling Jaya",
++      phone: "+60 16-555 0187", area: "Petaling Jaya", latitude: 3.1175, longitude: 101.6230,
++      parentProfile: { create: { address: "No. 8, Jalan SS2/24, Petaling Jaya, Selangor", childrenCount: 1, about: "One curious 7-year-old who loves science." } },
+       children: { create: [{ firstName: "Ethan", birthYear: year - 7, notes: "Homework help needed on weekdays." }] },
+-      paymentMethods: { create: { providerRef: "pm_sim_sample_daniel", brand: "Mastercard", last4: "4444", expMonth: 4, expYear: year + 2, holderName: "Daniel Kim", isDefault: true } },
++      paymentMethods: { create: { providerRef: "pm_sim_sample_daniel", brand: "Mastercard", last4: "4444", expMonth: 4, expYear: year + 2, holderName: "Daniel Wong", isDefault: true } },
+     },
+   });
+ 
+@@ -76,13 +76,13 @@ export async function createSampleAccounts(db: PrismaClient) {
+ 
+   await db.user.create({
+     data: {
+-      ...base(emails[3]), role: "SITTER", firstName: "Maya", lastName: "Rivera",
+-      phone: "+1 (347) 555-0121", area: "Park Slope", latitude: 40.6700, longitude: -73.9840,
++      ...base(emails[3]), role: "SITTER", firstName: "Maya", lastName: "Lim",
++      phone: "+60 11-555 0121", area: "Bangsar", latitude: 3.1310, longitude: 101.6700,
+       sitterProfile: { create: {
+         headline: "Early-years teacher, calm and creative with toddlers",
+         bio: "I'm a qualified early-years teacher with 5 years of classroom experience and plenty of evenings babysitting. I plan simple crafts and games, follow your routines closely, and send a quick update during the evening so you can relax.",
+         hourlyRateCents: 2200, experienceYears: 5, maxChildren: 3, serviceRadiusKm: 10,
+-        verifiedAt: new Date(), backgroundCheckAt: new Date(), cprCertified: true, languages: "English, Spanish",
++        verifiedAt: new Date(), backgroundCheckAt: new Date(), cprCertified: true, languages: "English, Malay, Mandarin",
+         skills: { create: skillIds(["Toddler Care", "Arts & Crafts", "First Aid", "CPR Certified", "Bilingual"]) },
+         availability: { create: [...everyEvening, ...weekends] },
+       } },
+@@ -90,13 +90,13 @@ export async function createSampleAccounts(db: PrismaClient) {
+   });
+   await db.user.create({
+     data: {
+-      ...base(emails[4]), role: "SITTER", firstName: "Jonas", lastName: "Weber",
+-      phone: "+1 (347) 555-0168", area: "Williamsburg", latitude: 40.7090, longitude: -73.9560,
++      ...base(emails[4]), role: "SITTER", firstName: "Jonas", lastName: "Lee",
++      phone: "+60 17-555 0168", area: "Mont Kiara", latitude: 3.1710, longitude: 101.6510,
+       sitterProfile: { create: {
+         headline: "Student and big brother, great with school-age kids",
+         bio: "I'm a university student studying education and the oldest of four, so homework, board games and bedtime battles are nothing new. I'm patient, reliable and happy to help with school pickups and cooking a simple dinner.",
+         hourlyRateCents: 1900, experienceYears: 3, maxChildren: 3, serviceRadiusKm: 12,
+-        verifiedAt: new Date(), cprCertified: false, languages: "English, German",
++        verifiedAt: new Date(), cprCertified: false, languages: "English, Mandarin",
+         skills: { create: skillIds(["Homework Help", "School Age", "Sports", "Cooking"]) },
+         availability: { create: [...everyEvening, { weekday: 6, startMinute: 10 * 60, endMinute: 22 * 60 }] },
+       } },
+diff --git a/prisma/schema.prisma b/prisma/schema.prisma
+index 8fe6946..419787c 100644
+--- a/prisma/schema.prisma
++++ b/prisma/schema.prisma
+@@ -40,7 +40,7 @@ model User {
+   phone        String     @default("") @db.VarChar(30)
+   city         String     @default("") @db.VarChar(80)
+   // Approximate home location, used for "near me" search. Never shown exactly.
+-  area         String     @default("") @db.VarChar(120) // neighborhood label, e.g. "Park Slope"
++  area         String     @default("") @db.VarChar(120) // neighbourhood label, e.g. "Bangsar"
+   latitude     Float?
+   longitude    Float?
+   avatarUrl    String?    @db.VarChar(500)
+diff --git a/prisma/seed.ts b/prisma/seed.ts
+index 5d8b98f..eec6f82 100644
+--- a/prisma/seed.ts
++++ b/prisma/seed.ts
+@@ -19,17 +19,18 @@ const rand = () => ((state = (state * 1664525 + 1013904223) % 2 ** 32) / 2 ** 32
+ const pick = <T,>(arr: T[]) => arr[Math.floor(rand() * arr.length)];
+ const jitter = () => (rand() - 0.5) * 0.012;
+ 
+-const AREAS: Record<string, [number, number]> = {
+-  "Park Slope": [40.671, -73.9814],
+-  Williamsburg: [40.7081, -73.9571],
+-  "Brooklyn Heights": [40.696, -73.9937],
+-  "Upper West Side": [40.787, -73.9754],
+-  "Upper East Side": [40.7736, -73.9566],
+-  Harlem: [40.8116, -73.9465],
+-  Chelsea: [40.7465, -74.0014],
+-  Tribeca: [40.7163, -74.0086],
+-  Astoria: [40.7644, -73.9235],
+-  "Long Island City": [40.7447, -73.9485],
++// Klang Valley neighbourhoods: [lat, lng, city].
++const AREAS: Record<string, [number, number, string]> = {
++  Bangsar: [3.1300, 101.6710, "Kuala Lumpur"],
++  "Mont Kiara": [3.1700, 101.6500, "Kuala Lumpur"],
++  Cheras: [3.0870, 101.7440, "Kuala Lumpur"],
++  Setapak: [3.2000, 101.7140, "Kuala Lumpur"],
++  Damansara: [3.1360, 101.6230, "Petaling Jaya"],
++  "Petaling Jaya": [3.1180, 101.6220, "Petaling Jaya"],
++  "Subang Jaya": [3.0490, 101.5850, "Subang Jaya"],
++  Puchong: [3.0250, 101.6170, "Puchong"],
++  "Shah Alam": [3.0730, 101.5180, "Shah Alam"],
++  Cyberjaya: [2.9220, 101.6500, "Cyberjaya"],
+ };
+ 
+ const SKILLS = [
+@@ -40,36 +41,41 @@ const SKILLS = [
+ const slug = (s: string) => s.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-");
+ 
+ const LANGUAGES: Record<string, string> = {
+-  Lucía: "English, Spanish", Chloe: "English, French", Priya: "English, Tamil", Noor: "English, Arabic",
+-  Sofia: "English, Italian", Yuki: "English, Japanese", Elena: "English, Romanian", Mateo: "English, Spanish",
++  Nurul: "Malay, English", "Mei Ling": "English, Malay, Mandarin", Siti: "Malay, English", Priya: "English, Tamil, Malay",
++  Hafiz: "Malay, English", Grace: "English, Cantonese", Aina: "Malay, English", Kamala: "English, Tamil",
++  "Wei Jie": "English, Mandarin", Farah: "Malay, English, Arabic", Arjun: "English, Tamil, Malay",
++  "Hui Min": "English, Mandarin, Malay", Zarina: "Malay, English", Chloe: "English, Mandarin",
++  Amir: "Malay, English", Rachel: "English, Hokkien, Malay",
+ };
+ 
+ const SITTERS = [
+-  ["Amara", "Okafor", "women/44", "Pediatric nursing student, calm with newborns", "Park Slope"],
+-  ["Lucía", "Fernández", "women/68", "Bilingual sitter, Spanish and English at home", "Williamsburg"],
+-  ["Hannah", "Lindqvist", "women/21", "Former preschool teacher with 6 years in classrooms", "Upper West Side"],
+-  ["Priya", "Raman", "women/90", "Homework help and science projects for school-age kids", "Long Island City"],
+-  ["Mateo", "Reyes", "men/32", "Soccer coach who keeps active kids busy outdoors", "Astoria"],
+-  ["Grace", "Whitfield", "women/12", "Certified in infant CPR, overnight care available", "Brooklyn Heights"],
+-  ["Noor", "Haddad", "women/33", "Art student who brings a craft project every visit", "Chelsea"],
+-  ["Ruth", "Abernathy", "women/79", "Retired nurse and grandmother of five", "Upper East Side"],
+-  ["Daniel", "Kowalski", "men/52", "Music teacher, piano and guitar basics", "Harlem"],
+-  ["Sofia", "Marchetti", "women/57", "Montessori-trained, great with toddlers", "Tribeca"],
+-  ["Jamal", "Carter", "men/15", "Special-needs experience, patient and structured", "Harlem"],
+-  ["Yuki", "Tanaka", "women/26", "Swim instructor in summer, sitter all year", "Park Slope"],
+-  ["Elena", "Popescu", "women/62", "Evening and weekend sitter, cooks healthy dinners", "Astoria"],
+-  ["Chloe", "Dubois", "women/8", "Early-childhood education student, French speaker", "Upper West Side"],
+-  ["Marcus", "Bell", "men/71", "Big brother of four, loves board games and Lego", "Williamsburg"],
+-  ["Isabel", "Moreno", "women/48", "Infant and toddler specialist, 8 years experience", "Brooklyn Heights"],
++  ["Nurul", "Aisyah", "women/44", "Paediatric nursing student, calm with newborns", "Bangsar"],
++  ["Mei Ling", "Tan", "women/68", "Speaks English, Malay and Mandarin at home", "Mont Kiara"],
++  ["Siti", "Hajar", "women/21", "Former tadika teacher with 6 years in classrooms", "Petaling Jaya"],
++  ["Priya", "Raman", "women/90", "Homework help and science projects for school-age kids", "Subang Jaya"],
++  ["Hafiz", "Rahman", "men/32", "Futsal coach who keeps active kids busy outdoors", "Cheras"],
++  ["Grace", "Lim", "women/12", "Certified in infant CPR, overnight care available", "Bangsar"],
++  ["Aina", "Zulkifli", "women/33", "Art student who brings a craft project every visit", "Damansara"],
++  ["Kamala", "Devi", "women/79", "Retired nurse and grandmother of five", "Puchong"],
++  ["Wei Jie", "Ong", "men/52", "Music teacher, piano and guitar basics", "Setapak"],
++  ["Farah", "Nabila", "women/57", "Montessori-trained, great with toddlers", "Mont Kiara"],
++  ["Arjun", "Pillai", "men/15", "Special-needs experience, patient and structured", "Shah Alam"],
++  ["Hui Min", "Wong", "women/26", "Swim instructor on weekends, sitter all week", "Petaling Jaya"],
++  ["Zarina", "Ahmad", "women/62", "Evening and weekend sitter, cooks healthy dinners", "Cheras"],
++  ["Chloe", "Ng", "women/8", "Early-childhood education student", "Subang Jaya"],
++  ["Amir", "Hakim", "men/71", "Big brother of four, loves board games and Lego", "Cyberjaya"],
++  ["Rachel", "Chong", "women/48", "Infant and toddler specialist, 8 years experience", "Bangsar"],
+ ] as const;
+ 
+ const PARENTS = [
+-  ["Olivia", "Bennett", "women/3", "Park Slope", "parent@meraki.test"],
+-  ["Ethan", "Novak", "men/45", "Upper West Side", "ethan.novak@meraki.test"],
+-  ["Zara", "Hussain", "women/36", "Williamsburg", "zara.hussain@meraki.test"],
+-  ["Liam", "O'Connell", "men/22", "Astoria", "liam.oconnell@meraki.test"],
++  ["Aisha", "Karim", "women/3", "Bangsar", "parent@meraki.test"],
++  ["Jason", "Lee", "men/45", "Petaling Jaya", "jason.lee@meraki.test"],
++  ["Zara", "Hussain", "women/36", "Mont Kiara", "zara.hussain@meraki.test"],
++  ["Suresh", "Nair", "men/22", "Cheras", "suresh.nair@meraki.test"],
+ ] as const;
+ 
++const STREETS = ["Mawar", "Melati", "Kenanga", "Cempaka", "Seroja", "Anggerik"];
++
+ const REVIEW_TEXT = [
+   "Our kids were asking when she can come back before she even left.",
+   "On time, organised, and sent us a photo update halfway through. Exactly what we needed.",
+@@ -101,7 +107,7 @@ async function main() {
+   await db.user.create({
+     data: {
+       email: "admin@meraki.test", passwordHash, role: "ADMIN", status: "ACTIVE",
+-      firstName: "Iris", lastName: "Mendel", city: "New York",
++      firstName: "Hana", lastName: "Ismail", city: "Kuala Lumpur",
+     },
+   });
+ 
+@@ -109,16 +115,16 @@ async function main() {
+   const sitterIds: string[] = [];
+   for (let i = 0; i < SITTERS.length; i++) {
+     const [first, last, photo, headline, area] = SITTERS[i];
+-    const [lat, lng] = AREAS[area];
++    const [lat, lng, city] = AREAS[area];
+     const rate = 1600 + Math.round(rand() * 14) * 100;
+     const mySkills = [...skills].sort(() => rand() - 0.5).slice(0, 3 + Math.floor(rand() * 3));
+     const email = i === 0 ? "sitter@meraki.test" : `${first}.${last}`.toLowerCase().normalize("NFD").replace(/[^a-z.]/g, "") + "@meraki.test";
+     const user = await db.user.create({
+       data: {
+         email, passwordHash, role: "SITTER", status: "ACTIVE",
+-        firstName: first, lastName: last, city: "New York", area,
++        firstName: first, lastName: last, city, area,
+         latitude: lat + jitter(), longitude: lng + jitter(),
+-        phone: `+1 (917) ${String(200 + i * 37).padStart(3, "0")}-${String(1000 + i * 613).slice(0, 4)}`,
++        phone: `+60 12-${String(200 + i * 37).padStart(3, "0")} ${String(1000 + i * 613).slice(0, 4)}`,
+         avatarUrl: `https://randomuser.me/api/portraits/${photo}.jpg`,
+         sitterProfile: {
+           create: {
+@@ -152,14 +158,14 @@ async function main() {
+ 
+   // Two sitters waiting for verification, for the admin queue.
+   for (const [first, last, photo, area] of [
+-    ["Tess", "Gallagher", "women/15", "Chelsea"],
+-    ["Omar", "Siddiqui", "men/41", "Astoria"],
++    ["Nadia", "Yusof", "women/15", "Damansara"],
++    ["Ravi", "Kumar", "men/41", "Cheras"],
+   ] as const) {
+-    const [lat, lng] = AREAS[area];
++    const [lat, lng, city] = AREAS[area];
+     await db.user.create({
+       data: {
+         email: `${first}.${last}@meraki.test`.toLowerCase(), passwordHash, role: "SITTER", status: "PENDING_REVIEW",
+-        firstName: first, lastName: last, city: "New York", area, latitude: lat + jitter(), longitude: lng + jitter(),
++        firstName: first, lastName: last, city, area, latitude: lat + jitter(), longitude: lng + jitter(),
+         avatarUrl: `https://randomuser.me/api/portraits/${photo}.jpg`,
+         sitterProfile: {
+           create: {
+@@ -176,17 +182,17 @@ async function main() {
+   // --- parents -----------------------------------------------------------------
+   const parentIds: string[] = [];
+   for (const [first, last, photo, area, email] of PARENTS) {
+-    const [lat, lng] = AREAS[area];
++    const [lat, lng, city] = AREAS[area];
+     const user = await db.user.create({
+       data: {
+         email, passwordHash, role: "PARENT", status: "ACTIVE",
+-        firstName: first, lastName: last, city: "New York", area,
++        firstName: first, lastName: last, city, area,
+         latitude: lat + jitter(), longitude: lng + jitter(),
+         avatarUrl: `https://randomuser.me/api/portraits/${photo}.jpg`,
+         parentProfile: {
+           create: {
+             childrenCount: 1 + Math.floor(rand() * 3),
+-            address: `${100 + Math.floor(rand() * 400)} ${pick(["5th Ave", "Berkeley Pl", "Bedford Ave", "W 86th St", "31st St"])}, ${area}, New York`,
++            address: `No. ${1 + Math.floor(rand() * 60)}, Jalan ${pick(STREETS)} ${1 + Math.floor(rand() * 9)}, ${area}, ${city}`,
+             about: "Two curious kids who love stories and being outside.",
+           },
+         },
+@@ -205,10 +211,10 @@ async function main() {
+   // --- children -----------------------------------------------------------------
+   const year = new Date().getFullYear();
+   const KIDS: [string, number, string][][] = [
+-    [["Mia", year - 6, "Peanut allergy: no nuts at all. Loves drawing."], ["Leo", year - 3, "Naps 1-3 PM, needs his blue blanket."]],
+-    [["Ava", year - 8, ""]],
+-    [["Noah", year - 5, "Bedtime 7:30 PM, two stories."], ["Ella", year - 2, ""]],
+-    [["Sam", year - 10, "Homework before screen time."]],
++    [["Sofia", year - 6, "Peanut allergy: no nuts at all. Loves drawing."], ["Adam", year - 3, "Naps 1-3 PM, needs his blue blanket."]],
++    [["Jia Hui", year - 8, ""]],
++    [["Ilyas", year - 5, "Bedtime 8:30 PM, two stories."], ["Hana", year - 2, ""]],
++    [["Arvin", year - 10, "Homework before screen time."]],
+   ];
+   for (let i = 0; i < parentIds.length; i++) {
+     for (const [firstName, birthYear, notes] of KIDS[i]) {
+@@ -221,7 +227,7 @@ async function main() {
+   const now = Date.now();
+   const atHour = (daysFromNow: number, hour: number) => {
+     const d = new Date(now + daysFromNow * 24 * HOUR);
+-    d.setUTCHours(hour + 4, 0, 0, 0); // roughly New York evening in UTC
++    d.setUTCHours(hour - 8, 0, 0, 0); // Malaysia time (UTC+8) to UTC
+     return d;
+   };
+ 
+@@ -300,9 +306,9 @@ async function main() {
+   }
+ 
+   // Link children to the demo parent's open bookings so sitters see names and ages.
+-  const oliviaKids = await db.child.findMany({ where: { parentId: parentIds[0] } });
++  const demoKids = await db.child.findMany({ where: { parentId: parentIds[0] } });
+   for (const b of await db.booking.findMany({ where: { parentId: parentIds[0], status: { in: ["REQUESTED", "ACCEPTED"] } } })) {
+-    await db.bookingChild.createMany({ data: oliviaKids.map((c) => ({ bookingId: b.id, childId: c.id })) });
++    await db.bookingChild.createMany({ data: demoKids.map((c) => ({ bookingId: b.id, childId: c.id })) });
+   }
+ 
+   // --- job board -------------------------------------------------------------------
+@@ -320,20 +326,20 @@ async function main() {
+     });
+   };
+   const dateNight = await job("parent@meraki.test", 8, 18, 5, "Date night, two kids",
+-    "Dinner, bath and bedtime for Mia (6) and Leo (3). Mia has a nut allergy. We have a friendly cat.", 25, 2);
++    "Dinner, bath and bedtime for Sofia (6) and Adam (3). Sofia has a nut allergy. We have a friendly cat.", 25, 2);
+   await job("zara.hussain@meraki.test", 4, 11, 4, "After-school pickup and homework help",
+-    "Pick up Noah from school at 3:15, snack, homework, play until we're home around 7.", 24, 2);
++    "Pick up Ilyas from school at 3:15, snack, homework, play until we're home around 7.", 24, 2);
+   await job("zara.hussain@meraki.test", 11, 9, 8, "Full day with a toddler and a 5-year-old",
+-    "Park in the morning, lunch, nap time for Ella. Experience with toddlers needed.", 26, 2);
+-  await job("liam.oconnell@meraki.test", 6, 15, 4, "Evening sitter in Astoria", "Homework and dinner for Sam (10).", 22, 1);
++    "Park in the morning, lunch, nap time for Hana. Experience with toddlers needed.", 26, 2);
++  await job("suresh.nair@meraki.test", 6, 15, 4, "Evening sitter in Cheras", "Homework and dinner for Arvin (10).", 22, 1);
+   for (const [i, message] of [
+-    [11, "Hi Olivia! I'm free that evening and I'm a swim instructor, so bath time is my specialty. I always check allergies twice."],
+-    [15, "Hello! I've looked after toddlers for 8 years and love bedtime stories. I live a few minutes away in Brooklyn Heights."],
++    [11, "Hi Aisha! I'm free that evening and I'm a swim instructor, so bath time is my specialty. I always check allergies twice."],
++    [15, "Hello! I've looked after toddlers for 8 years and love bedtime stories. I live a few minutes away in Bangsar."],
+   ] as const) {
+     await db.jobApplication.create({ data: { jobId: dateNight.id, sitterId: sitterIds[i], message, createdAt: new Date(now - 2 * HOUR) } });
+   }
+-  await db.notification.create({ data: { userId: parentIds[0], title: "New applicant", body: "Isabel applied to “Date night, two kids”.", href: `/jobs/${dateNight.id}` } });
+-  await db.notification.create({ data: { userId: sitterIds[0], title: "New job near you", body: "After-school pickup and homework help in Williamsburg.", href: "/sitter/jobs" } });
++  await db.notification.create({ data: { userId: parentIds[0], title: "New applicant", body: "Rachel applied to “Date night, two kids”.", href: `/jobs/${dateNight.id}` } });
++  await db.notification.create({ data: { userId: sitterIds[0], title: "New job near you", body: "After-school pickup and homework help in Mont Kiara.", href: "/sitter/jobs" } });
+ 
+   await db.favorite.createMany({
+     data: [0, 2, 5].map((i) => ({ parentId: parentIds[0], sitterId: sitterIds[i] })),
+diff --git a/src/app/(site)/about/page.tsx b/src/app/(site)/about/page.tsx
+index b460468..cd6b7b6 100644
+--- a/src/app/(site)/about/page.tsx
++++ b/src/app/(site)/about/page.tsx
+@@ -16,7 +16,7 @@ export const metadata: Metadata = {
+ };
+ 
+ const STEPS = [
+-  { icon: MagnifyingGlass, title: "Search near your home", body: "Type your address or ZIP code, or pick your neighborhood. You only see sitters who travel to you, with their real weekly availability, rate and reviews." },
++  { icon: MagnifyingGlass, title: "Search near your home", body: "Type your address or postcode, or pick your neighborhood. You only see sitters who travel to you, with their real weekly availability, rate and reviews." },
+   { icon: Briefcase, title: "Or post a job", body: "Tell us when you need help and your budget. Sitters nearby are notified and apply with a message. You compare them side by side and hire in one click." },
+   { icon: CalendarCheck, title: "Request a time", body: `Pick a slot inside the sitter's availability and choose which children they'll look after. They have ${config.sitterResponseHours} hours to accept.` },
+   { icon: ChatCircleText, title: "Plan the details", body: "Message your sitter about routines, allergies and directions. Your address and phone number are only shared once they accept." },
+@@ -31,13 +31,21 @@ const TRUST = [
+   { icon: Eye, title: "Privacy by default", body: "Nobody sees your exact location. Sitters see your neighborhood until they accept, and card numbers are never stored." },
+ ];
+ 
++const WHY = [
++  { title: "The problem", body: "Many parents find babysitters through social media groups or friends. They cannot check who the person is, reviews may not be real, and they often pay before the job is done." },
++  { title: "What Meraki does", body: "Every sitter is checked by a person before they appear in search. Families book inside the sitter's real hours, and the money is held until the parent confirms the job went well." },
++  { title: "Who it helps", body: "Working parents get safe childcare close to home. Students, mothers and retirees get flexible, fair-paid work with a profile that builds trust over time." },
++];
++
+ const FAQ = [
+   { q: "How much does Meraki cost?", a: `Joining is free. When you book, you pay the sitter's hourly rate plus a ${Math.round(config.serviceFeeRate * 100)}% service fee (minimum ${formatMoney(config.serviceFeeMinCents)}). There's no subscription.` },
+   { q: "When is my card charged?", a: `Only after the job. We place a hold when you book. You're charged when you confirm, or automatically ${config.autoConfirmHours} hours after the job if you don't respond.` },
++  { q: "How can I pay?", a: "This demo accepts cards (payments are simulated). For the Malaysia launch we plan to add FPX online banking, Touch 'n Go eWallet and GrabPay through the same payment step." },
+   { q: "What if I need to cancel?", a: `Cancelling is free until ${config.freeCancelHours} hours before the start. After that, ${Math.round(config.lateCancelFeeRate * 100)}% of the sitter's pay is charged and goes to the sitter, who kept that time free for you.` },
+   { q: "What if something goes wrong?", a: "Use “Report a problem” on the booking. The payment is paused and our team contacts you and the sitter, usually within one business day, and decides on a full or partial refund." },
+   { q: "Can I book the same sitter again?", a: "Yes. Your home page has a “Book again” list with every sitter you've used, and you can save favorites." },
+-  { q: "Which areas do you cover?", a: "Any area where sitters have joined. Search your address to see who travels to you, or browse by neighborhood." },
++  { q: "Which areas do you cover?", a: "We are starting in the Klang Valley, Malaysia. Meraki works in any area where sitters have joined: search your address to see who travels to you, or browse by neighbourhood." },
++  { q: "Is Meraki only for Malaysia?", a: "No. Currency, language, time zone and country are settings, so Meraki can launch in a new country without rebuilding the platform. We have already made a local version for Tashkent, Uzbekistan." },
+ ];
+ 
+ export default function AboutPage() {
+@@ -59,6 +67,25 @@ export default function AboutPage() {
+         <Image src={logo} alt="The Meraki logo: a mother hugging a smiling toddler, with the words Caring Babysitters" className="mx-auto w-full max-w-sm rounded-[28px] shadow-card" loading="eager" fetchPriority="high" sizes="(min-width: 1024px) 384px, 90vw" />
+       </section>
+ 
++      <section className="border-t border-line">
++        <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 md:py-24">
++          <h2 className="text-3xl font-bold md:text-4xl">Why we built Meraki</h2>
++          <ul className="mt-10 grid grid-cols-1 gap-8 md:grid-cols-3">
++            {WHY.map((w) => (
++              <li key={w.title}>
++                <h3 className="text-lg font-semibold">{w.title}</h3>
++                <p className="mt-1.5 text-ink-2">{w.body}</p>
++              </li>
++            ))}
++          </ul>
++          <p className="mt-10 max-w-3xl rounded-2xl bg-accent-soft p-6 text-ink-2">
++            <strong className="text-ink">Starting in Malaysia, built for any country.</strong> Meraki launches in the Klang Valley.
++            Currency, language, time zone and payment provider are settings, so the same platform can open in a new country.
++            A local version for Tashkent, Uzbekistan, already exists.
++          </p>
++        </div>
++      </section>
++
+       <section className="bg-surface-2">
+         <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 md:py-24">
+           <h2 className="text-3xl font-bold md:text-4xl">How Meraki works for parents</h2>
+diff --git a/src/app/(site)/sitters/page.tsx b/src/app/(site)/sitters/page.tsx
+index 8b90d71..599a45f 100644
+--- a/src/app/(site)/sitters/page.tsx
++++ b/src/app/(site)/sitters/page.tsx
+@@ -154,7 +154,7 @@ export default async function SittersPage({ searchParams }: PageProps<"/sitters"
+           {geocodeFailed && (
+             <div className="mb-5">
+               <Alert tone="warn">
+-                We couldn&apos;t find &ldquo;{nearText}&rdquo;. Try a ZIP code, a street address, or pick a neighborhood above.
++                We couldn&apos;t find &ldquo;{nearText}&rdquo;. Try a postcode, a street address, or pick a neighborhood above.
+               </Alert>
+             </div>
+           )}
+diff --git a/src/app/actions/account.ts b/src/app/actions/account.ts
+index f8cb7b2..07edfe2 100644
+--- a/src/app/actions/account.ts
++++ b/src/app/actions/account.ts
+@@ -40,7 +40,7 @@ export async function updateAccount(_: FormState, form: FormData): Promise<FormS
+   let location = {};
+   if (d.area && d.area !== current.area) {
+     const place = await geocode(d.area);
+-    if (!place) return { fieldErrors: { area: ["We couldn't find that place. Try a ZIP code."] }, values };
++    if (!place) return { fieldErrors: { area: ["We couldn't find that place. Try a postcode."] }, values };
+     location = { area: place.label.split(",")[0].trim(), latitude: place.lat, longitude: place.lng };
+   }
+   await db.user.update({
+diff --git a/src/app/actions/auth.ts b/src/app/actions/auth.ts
+index 8433e30..7198f7a 100644
+--- a/src/app/actions/auth.ts
++++ b/src/app/actions/auth.ts
+@@ -87,7 +87,7 @@ const signupSchema = z.object({
+   lastName: z.string().trim().min(1, "Enter your last name.").max(60),
+   email: z.email("Enter a valid email address.").transform((v) => v.toLowerCase().trim()),
+   phone: z.string().trim().max(30).regex(/^[\d\s()+.-]*$/, "Use digits, spaces and + ( ) - only.").optional().default(""),
+-  area: z.string().trim().min(2, "Tell us your neighborhood or ZIP code.").max(120),
++  area: z.string().trim().min(2, "Tell us your neighborhood or postcode.").max(120),
+   password: passwordRule,
+   terms: z.literal("on", { error: "Please accept the terms to continue." }),
+ });
+diff --git a/src/app/actions/sitter.ts b/src/app/actions/sitter.ts
+index 9a8ac93..418e6cd 100644
+--- a/src/app/actions/sitter.ts
++++ b/src/app/actions/sitter.ts
+@@ -28,7 +28,7 @@ const profileSchema = z.object({
+   experienceYears: z.coerce.number().int().min(0).max(60),
+   maxChildren: z.coerce.number().int().min(1).max(8),
+   serviceRadiusKm: z.coerce.number().int().min(1).max(50),
+-  area: z.string().trim().min(2, "Enter your neighborhood or ZIP code.").max(120),
++  area: z.string().trim().min(2, "Enter your neighborhood or postcode.").max(120),
+   skills: z.array(z.coerce.number().int()).max(14),
+   languages: z.string().trim().max(120).regex(/^[\p{L} ,.-]*$/u, "Use letters and commas only."),
+   cprCertified: z.boolean(),
+@@ -46,7 +46,7 @@ export async function updateSitterProfile(_: FormState, form: FormData): Promise
+   let location = {};
+   if (d.area !== current.area || current.latitude == null) {
+     const place = await geocode(d.area);
+-    if (!place) return { fieldErrors: { area: ["We couldn't find that place. Try a ZIP code."] }, values };
++    if (!place) return { fieldErrors: { area: ["We couldn't find that place. Try a postcode."] }, values };
+     location = { area: place.label.split(",")[0].trim(), latitude: place.lat, longitude: place.lng };
+   }
+ 
+diff --git a/src/components/auth-forms.tsx b/src/components/auth-forms.tsx
+index 575bfd6..b733cec 100644
+--- a/src/components/auth-forms.tsx
++++ b/src/components/auth-forms.tsx
+@@ -68,12 +68,12 @@ export function SignupForm({ defaultRole }: { defaultRole: "PARENT" | "SITTER" }
+         <Input id="email" name="email" type="email" autoComplete="email" defaultValue={v?.email} aria-invalid={!!err("email")} required />
+       </Field>
+       <Field
+-        label={role === "SITTER" ? "Where are you based?" : "Your neighborhood or ZIP code"}
++        label={role === "SITTER" ? "Where are you based?" : "Your neighborhood or postcode"}
+         htmlFor="area"
+         error={err("area")}
+         hint={role === "SITTER" ? "Families see your neighborhood and distance, never your address." : "Used to show sitters near you."}
+       >
+-        <Input id="area" name="area" autoComplete="postal-code" placeholder="e.g. Park Slope or 11215" defaultValue={v?.area} aria-invalid={!!err("area")} required />
++        <Input id="area" name="area" autoComplete="postal-code" placeholder="e.g. Bangsar or 59100" defaultValue={v?.area} aria-invalid={!!err("area")} required />
+       </Field>
+       <Field label="Phone (optional)" htmlFor="phone" error={err("phone")} hint="Shared only with confirmed bookings.">
+         <Input id="phone" name="phone" type="tel" autoComplete="tel" defaultValue={v?.phone} />
+diff --git a/src/components/location-search.tsx b/src/components/location-search.tsx
+index 57d3537..2c11d63 100644
+--- a/src/components/location-search.tsx
++++ b/src/components/location-search.tsx
+@@ -74,7 +74,7 @@ export function LocationSearch({
+           id="near"
+           name="near"
+           defaultValue={defaultValue === "Your location" ? "" : defaultValue}
+-          placeholder={defaultValue === "Your location" ? "Using your location" : "Address, ZIP code or neighborhood"}
++          placeholder={defaultValue === "Your location" ? "Using your location" : "Address, postcode or neighborhood"}
+           autoComplete="street-address"
+           className={cn(
+             "min-w-0 flex-1 bg-transparent text-ink placeholder:text-ink-3 focus:outline-none",
+diff --git a/src/components/settings-forms.tsx b/src/components/settings-forms.tsx
+index 8f4ed53..821c850 100644
+--- a/src/components/settings-forms.tsx
++++ b/src/components/settings-forms.tsx
+@@ -6,6 +6,7 @@ import type { FormState } from "@/app/actions/auth";
+ import { changePassword, updateAccount, uploadAvatar } from "@/app/actions/account";
+ import { saveAvailability, updateSitterProfile } from "@/app/actions/sitter";
+ import { WEEKDAYS, formatMinutes } from "@/lib/format";
++import { config } from "@/lib/config";
+ import { SubmitButton } from "./submit-button";
+ import { Alert, Avatar, Field, Input, Select, Textarea, cn } from "./ui";
+ 
+@@ -66,7 +67,7 @@ export function AccountForm({ user }: { user: { firstName: string; lastName: str
+         <Field label="Phone" htmlFor="phone" error={err("phone")}>
+           <Input id="phone" name="phone" type="tel" defaultValue={v.phone} autoComplete="tel" />
+         </Field>
+-        <Field label="Neighborhood or ZIP code" htmlFor="area" error={err("area")} hint="Used for sitters near you.">
++        <Field label="Neighborhood or postcode" htmlFor="area" error={err("area")} hint="Used for sitters near you.">
+           <Input id="area" name="area" defaultValue={v.area} autoComplete="postal-code" />
+         </Field>
+       </div>
+@@ -115,7 +116,7 @@ export function SitterProfileForm({ profile, allSkills }: SitterProfileProps) {
+         <Textarea id="bio" name="bio" rows={6} maxLength={2000} value={bio} onChange={(e) => setBio(e.target.value)} />
+       </Field>
+       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+-        <Field label="Hourly rate (USD)" htmlFor="hourlyRate" error={err("hourlyRate")}>
++        <Field label={`Hourly rate (${config.currency})`} htmlFor="hourlyRate" error={err("hourlyRate")}>
+           <Input id="hourlyRate" name="hourlyRate" type="number" step="0.5" min={10} max={100} inputMode="decimal" defaultValue={v?.hourlyRate ?? profile.hourlyRate} />
+         </Field>
+         <Field label="Years of experience" htmlFor="experienceYears" error={err("experienceYears")}>
+@@ -128,7 +129,7 @@ export function SitterProfileForm({ profile, allSkills }: SitterProfileProps) {
+         </Field>
+       </div>
+       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+-        <Field label="Home neighborhood or ZIP code" htmlFor="area" error={err("area")} hint="Families see the neighborhood and distance only.">
++        <Field label="Home neighborhood or postcode" htmlFor="area" error={err("area")} hint="Families see the neighborhood and distance only.">
+           <Input id="area" name="area" defaultValue={v?.area ?? profile.area} />
+         </Field>
+         <Field label="How far will you travel?" htmlFor="serviceRadiusKm">
+diff --git a/src/lib/config.ts b/src/lib/config.ts
+index e5b4d8d..f8227ab 100644
+--- a/src/lib/config.ts
++++ b/src/lib/config.ts
+@@ -2,10 +2,12 @@
+ 
+ export const config = {
+   appName: "Meraki",
+-  currency: process.env.NEXT_PUBLIC_CURRENCY ?? "USD",
+-  locale: process.env.NEXT_PUBLIC_LOCALE ?? "en-US",
++  // Defaults are for the Malaysia launch. Another country only needs these
++  // environment variables changed (currency, locale, time zone, geocoder country).
++  currency: process.env.NEXT_PUBLIC_CURRENCY ?? "MYR",
++  locale: process.env.NEXT_PUBLIC_LOCALE ?? "en-MY",
+   // Bookings are entered and shown in this time zone.
+-  timeZone: process.env.APP_TIMEZONE ?? "UTC",
++  timeZone: process.env.APP_TIMEZONE ?? "Asia/Kuala_Lumpur",
+ 
+   // Parent pays rate x hours + a service fee. The sitter keeps the full rate.
+   serviceFeeRate: 0.1,
+diff --git a/src/lib/geo.ts b/src/lib/geo.ts
+index ede688c..78ea4c1 100644
+--- a/src/lib/geo.ts
++++ b/src/lib/geo.ts
+@@ -46,7 +46,8 @@ export async function geocode(query: string): Promise<(Point & { label: string }
+   const area = await areaCentre(query);
+   if (area) return area;
+ 
+-  const bias = process.env.GEOCODER_COUNTRY ? `&countrycodes=${process.env.GEOCODER_COUNTRY}` : "";
++  const country = process.env.GEOCODER_COUNTRY ?? "my"; // ISO country code(s), e.g. "my" or "my,sg"
++  const bias = country ? `&countrycodes=${country}` : "";
+   const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1${bias}&q=${encodeURIComponent(query)}`;
+   try {
+     const res = await fetch(url, {
+diff --git a/tests/booking-flow.test.ts b/tests/booking-flow.test.ts
+index fd9136d..2473885 100644
+--- a/tests/booking-flow.test.ts
++++ b/tests/booking-flow.test.ts
+@@ -23,11 +23,11 @@ const asUser = (u: { id: string; role: CurrentUser["role"]; firstName: string; l
+   ...u, status: "ACTIVE", avatarUrl: null,
+ });
+ 
+-// A slot `daysAhead` days from now at 16:00 UTC (daytime in the Americas and
+-// Europe, so it never crosses midnight in the app time zone), `hours` long.
++// A slot `daysAhead` days from now at 03:00 UTC (11:00 in Malaysia, so it
++// never crosses midnight in the app time zone), `hours` long.
+ function slot(daysAhead: number, hours = 3) {
+   const start = new Date(Date.now() + daysAhead * 24 * HOUR);
+-  start.setUTCHours(16, 0, 0, 0);
++  start.setUTCHours(3, 0, 0, 0);
+   return { startsAt: start, endsAt: new Date(start.getTime() + hours * HOUR) };
+ }
+ 
+diff --git a/tests/jobs-and-security.test.ts b/tests/jobs-and-security.test.ts
+index 62db5a4..dd4a059 100644
+--- a/tests/jobs-and-security.test.ts
++++ b/tests/jobs-and-security.test.ts
+@@ -21,7 +21,7 @@ const as = (u: { id: string; role: CurrentUser["role"]; firstName: string; lastN
+ 
+ function when(daysAhead: number, hours = 3) {
+   const startsAt = new Date(Date.now() + daysAhead * 24 * HOUR);
+-  startsAt.setUTCHours(17, 0, 0, 0);
++  startsAt.setUTCHours(4, 0, 0, 0); // midday in Malaysia, never crosses midnight
+   return { startsAt, endsAt: new Date(startsAt.getTime() + hours * HOUR) };
+ }
+ 
+-- 
+2.43.0
+
