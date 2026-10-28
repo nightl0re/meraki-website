@@ -1,6 +1,7 @@
 // End-to-end tests for the booking + payment state machine against the real
 // database. Run with `npm test`. Creates its own users and removes them after.
 
+import { assertLocalDatabase } from "../prisma/local-only";
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { db } from "@/lib/db";
@@ -9,8 +10,11 @@ import {
   resolveDispute, sweep, type NewBooking,
 } from "@/lib/bookings";
 import { payments } from "@/lib/payments/provider";
+import { toDateInput, zonedToUtc } from "@/lib/time";
 import type { CurrentUser } from "@/lib/auth";
 
+
+assertLocalDatabase("the tests");
 const HOUR = 3_600_000;
 const tag = `t${Date.now()}`;
 let parent: CurrentUser;
@@ -23,11 +27,10 @@ const asUser = (u: { id: string; role: CurrentUser["role"]; firstName: string; l
   ...u, status: "ACTIVE", avatarUrl: null,
 });
 
-// A slot `daysAhead` days from now at 16:00 UTC (daytime in the Americas and
-// Europe, so it never crosses midnight in the app time zone), `hours` long.
+// A slot `daysAhead` days from now at 11:00 in the app's time zone (whatever
+// APP_TIMEZONE is), so it never crosses midnight there; `hours` long.
 function slot(daysAhead: number, hours = 3) {
-  const start = new Date(Date.now() + daysAhead * 24 * HOUR);
-  start.setUTCHours(16, 0, 0, 0);
+  const start = zonedToUtc(toDateInput(new Date(Date.now() + daysAhead * 24 * HOUR)), "11:00")!;
   return { startsAt: start, endsAt: new Date(start.getTime() + hours * HOUR) };
 }
 

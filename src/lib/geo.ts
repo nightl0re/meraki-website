@@ -46,7 +46,8 @@ export async function geocode(query: string): Promise<(Point & { label: string }
   const area = await areaCentre(query);
   if (area) return area;
 
-  const bias = process.env.GEOCODER_COUNTRY ? `&countrycodes=${process.env.GEOCODER_COUNTRY}` : "";
+  const country = process.env.GEOCODER_COUNTRY ?? "my"; // ISO country code(s), e.g. "my" or "my,sg"
+  const bias = country ? `&countrycodes=${country}` : "";
   const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1${bias}&q=${encodeURIComponent(query)}`;
   try {
     const res = await fetch(url, {
@@ -80,7 +81,7 @@ function shortLabel(displayName: string) {
 // Neighborhoods with at least one bookable sitter, with a centre point.
 export async function listAreas() {
   const rows = await db.user.groupBy({
-    by: ["area", "city"],
+    by: ["area"],
     where: {
       role: "SITTER",
       status: "ACTIVE",
@@ -92,13 +93,24 @@ export async function listAreas() {
     _count: true,
     orderBy: { area: "asc" },
   });
-  return rows.map((r) => ({
-    area: r.area,
-    city: r.city,
-    count: r._count,
-    lat: r._avg.latitude ?? 0,
-    lng: r._avg.longitude ?? 0,
-  }));
+  // One entry per neighborhood, even if sitters typed it with different
+  // capitalisation ("Bangsar" / "bangsar"); counts and centres are merged.
+  const merged = new Map<string, { area: string; count: number; lat: number; lng: number }>();
+  for (const r of rows) {
+    const key = r.area.trim().toLowerCase();
+    const prev = merged.get(key);
+    const lat = r._avg.latitude ?? 0;
+    const lng = r._avg.longitude ?? 0;
+    if (!prev) {
+      merged.set(key, { area: r.area.trim(), count: r._count, lat, lng });
+    } else {
+      const total = prev.count + r._count;
+      prev.lat = (prev.lat * prev.count + lat * r._count) / total;
+      prev.lng = (prev.lng * prev.count + lng * r._count) / total;
+      prev.count = total;
+    }
+  }
+  return [...merged.values()];
 }
 
 async function areaCentre(query: string) {

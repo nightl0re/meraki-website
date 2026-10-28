@@ -8,6 +8,9 @@
 import { PrismaClient, type BookingStatus } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { createSampleAccounts } from "./sample-accounts";
+import { assertLocalDatabase } from "./local-only";
+
+assertLocalDatabase("the seed (it deletes all data first)");
 
 const db = new PrismaClient();
 const PASSWORD = "Meraki-demo-2026";
@@ -19,17 +22,18 @@ const rand = () => ((state = (state * 1664525 + 1013904223) % 2 ** 32) / 2 ** 32
 const pick = <T,>(arr: T[]) => arr[Math.floor(rand() * arr.length)];
 const jitter = () => (rand() - 0.5) * 0.012;
 
-const AREAS: Record<string, [number, number]> = {
-  "Park Slope": [40.671, -73.9814],
-  Williamsburg: [40.7081, -73.9571],
-  "Brooklyn Heights": [40.696, -73.9937],
-  "Upper West Side": [40.787, -73.9754],
-  "Upper East Side": [40.7736, -73.9566],
-  Harlem: [40.8116, -73.9465],
-  Chelsea: [40.7465, -74.0014],
-  Tribeca: [40.7163, -74.0086],
-  Astoria: [40.7644, -73.9235],
-  "Long Island City": [40.7447, -73.9485],
+// Klang Valley neighbourhoods: [lat, lng, city].
+const AREAS: Record<string, [number, number, string]> = {
+  Bangsar: [3.1300, 101.6710, "Kuala Lumpur"],
+  "Mont Kiara": [3.1700, 101.6500, "Kuala Lumpur"],
+  Cheras: [3.0870, 101.7440, "Kuala Lumpur"],
+  Setapak: [3.2000, 101.7140, "Kuala Lumpur"],
+  Damansara: [3.1360, 101.6230, "Petaling Jaya"],
+  "Petaling Jaya": [3.1180, 101.6220, "Petaling Jaya"],
+  "Subang Jaya": [3.0490, 101.5850, "Subang Jaya"],
+  Puchong: [3.0250, 101.6170, "Puchong"],
+  "Shah Alam": [3.0730, 101.5180, "Shah Alam"],
+  Cyberjaya: [2.9220, 101.6500, "Cyberjaya"],
 };
 
 const SKILLS = [
@@ -40,35 +44,40 @@ const SKILLS = [
 const slug = (s: string) => s.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-");
 
 const LANGUAGES: Record<string, string> = {
-  Lucía: "English, Spanish", Chloe: "English, French", Priya: "English, Tamil", Noor: "English, Arabic",
-  Sofia: "English, Italian", Yuki: "English, Japanese", Elena: "English, Romanian", Mateo: "English, Spanish",
+  Nurul: "Malay, English", "Mei Ling": "English, Malay, Mandarin", Siti: "Malay, English", Priya: "English, Tamil, Malay",
+  Hafiz: "Malay, English", Grace: "English, Cantonese", Aina: "Malay, English", Kamala: "English, Tamil",
+  "Wei Jie": "English, Mandarin", Farah: "Malay, English, Arabic", Arjun: "English, Tamil, Malay",
+  "Hui Min": "English, Mandarin, Malay", Zarina: "Malay, English", Chloe: "English, Mandarin",
+  Amir: "Malay, English", Rachel: "English, Hokkien, Malay",
 };
 
 const SITTERS = [
-  ["Amara", "Okafor", "women/44", "Pediatric nursing student, calm with newborns", "Park Slope"],
-  ["Lucía", "Fernández", "women/68", "Bilingual sitter, Spanish and English at home", "Williamsburg"],
-  ["Hannah", "Lindqvist", "women/21", "Former preschool teacher with 6 years in classrooms", "Upper West Side"],
-  ["Priya", "Raman", "women/90", "Homework help and science projects for school-age kids", "Long Island City"],
-  ["Mateo", "Reyes", "men/32", "Soccer coach who keeps active kids busy outdoors", "Astoria"],
-  ["Grace", "Whitfield", "women/12", "Certified in infant CPR, overnight care available", "Brooklyn Heights"],
-  ["Noor", "Haddad", "women/33", "Art student who brings a craft project every visit", "Chelsea"],
-  ["Ruth", "Abernathy", "women/79", "Retired nurse and grandmother of five", "Upper East Side"],
-  ["Daniel", "Kowalski", "men/52", "Music teacher, piano and guitar basics", "Harlem"],
-  ["Sofia", "Marchetti", "women/57", "Montessori-trained, great with toddlers", "Tribeca"],
-  ["Jamal", "Carter", "men/15", "Special-needs experience, patient and structured", "Harlem"],
-  ["Yuki", "Tanaka", "women/26", "Swim instructor in summer, sitter all year", "Park Slope"],
-  ["Elena", "Popescu", "women/62", "Evening and weekend sitter, cooks healthy dinners", "Astoria"],
-  ["Chloe", "Dubois", "women/8", "Early-childhood education student, French speaker", "Upper West Side"],
-  ["Marcus", "Bell", "men/71", "Big brother of four, loves board games and Lego", "Williamsburg"],
-  ["Isabel", "Moreno", "women/48", "Infant and toddler specialist, 8 years experience", "Brooklyn Heights"],
+  ["Nurul", "Aisyah", "women/44", "Paediatric nursing student, calm with newborns", "Bangsar"],
+  ["Mei Ling", "Tan", "women/68", "Speaks English, Malay and Mandarin at home", "Mont Kiara"],
+  ["Siti", "Hajar", "women/21", "Former tadika teacher with 6 years in classrooms", "Petaling Jaya"],
+  ["Priya", "Raman", "women/90", "Homework help and science projects for school-age kids", "Subang Jaya"],
+  ["Hafiz", "Rahman", "men/32", "Futsal coach who keeps active kids busy outdoors", "Cheras"],
+  ["Grace", "Lim", "women/12", "Certified in infant CPR, overnight care available", "Bangsar"],
+  ["Aina", "Zulkifli", "women/33", "Art student who brings a craft project every visit", "Damansara"],
+  ["Kamala", "Devi", "women/79", "Retired nurse and grandmother of five", "Puchong"],
+  ["Wei Jie", "Ong", "men/52", "Music teacher, piano and guitar basics", "Setapak"],
+  ["Farah", "Nabila", "women/57", "Montessori-trained, great with toddlers", "Mont Kiara"],
+  ["Arjun", "Pillai", "men/15", "Special-needs experience, patient and structured", "Shah Alam"],
+  ["Hui Min", "Wong", "women/26", "Swim instructor on weekends, sitter all week", "Petaling Jaya"],
+  ["Zarina", "Ahmad", "women/62", "Evening and weekend sitter, cooks healthy dinners", "Cheras"],
+  ["Chloe", "Ng", "women/8", "Early-childhood education student", "Subang Jaya"],
+  ["Amir", "Hakim", "men/71", "Big brother of four, loves board games and Lego", "Cyberjaya"],
+  ["Rachel", "Chong", "women/48", "Infant and toddler specialist, 8 years experience", "Bangsar"],
 ] as const;
 
 const PARENTS = [
-  ["Olivia", "Bennett", "women/3", "Park Slope", "parent@meraki.test"],
-  ["Ethan", "Novak", "men/45", "Upper West Side", "ethan.novak@meraki.test"],
-  ["Zara", "Hussain", "women/36", "Williamsburg", "zara.hussain@meraki.test"],
-  ["Liam", "O'Connell", "men/22", "Astoria", "liam.oconnell@meraki.test"],
+  ["Aisha", "Karim", "women/3", "Bangsar", "parent@meraki.test"],
+  ["Jason", "Lee", "men/45", "Petaling Jaya", "jason.lee@meraki.test"],
+  ["Zara", "Hussain", "women/36", "Mont Kiara", "zara.hussain@meraki.test"],
+  ["Suresh", "Nair", "men/22", "Cheras", "suresh.nair@meraki.test"],
 ] as const;
+
+const STREETS = ["Mawar", "Melati", "Kenanga", "Cempaka", "Seroja", "Anggerik"];
 
 const REVIEW_TEXT = [
   "Our kids were asking when she can come back before she even left.",
@@ -101,7 +110,7 @@ async function main() {
   await db.user.create({
     data: {
       email: "admin@meraki.test", passwordHash, role: "ADMIN", status: "ACTIVE",
-      firstName: "Iris", lastName: "Mendel", city: "New York",
+      firstName: "Hana", lastName: "Ismail", city: "Kuala Lumpur",
     },
   });
 
@@ -109,16 +118,16 @@ async function main() {
   const sitterIds: string[] = [];
   for (let i = 0; i < SITTERS.length; i++) {
     const [first, last, photo, headline, area] = SITTERS[i];
-    const [lat, lng] = AREAS[area];
+    const [lat, lng, city] = AREAS[area];
     const rate = 1600 + Math.round(rand() * 14) * 100;
     const mySkills = [...skills].sort(() => rand() - 0.5).slice(0, 3 + Math.floor(rand() * 3));
     const email = i === 0 ? "sitter@meraki.test" : `${first}.${last}`.toLowerCase().normalize("NFD").replace(/[^a-z.]/g, "") + "@meraki.test";
     const user = await db.user.create({
       data: {
         email, passwordHash, role: "SITTER", status: "ACTIVE",
-        firstName: first, lastName: last, city: "New York", area,
+        firstName: first, lastName: last, city, area,
         latitude: lat + jitter(), longitude: lng + jitter(),
-        phone: `+1 (917) ${String(200 + i * 37).padStart(3, "0")}-${String(1000 + i * 613).slice(0, 4)}`,
+        phone: `+60 12-${String(200 + i * 37).padStart(3, "0")} ${String(1000 + i * 613).slice(0, 4)}`,
         avatarUrl: `https://randomuser.me/api/portraits/${photo}.jpg`,
         sitterProfile: {
           create: {
@@ -152,14 +161,15 @@ async function main() {
 
   // Two sitters waiting for verification, for the admin queue.
   for (const [first, last, photo, area] of [
-    ["Tess", "Gallagher", "women/15", "Chelsea"],
-    ["Omar", "Siddiqui", "men/41", "Astoria"],
+    ["Nadia", "Yusof", "women/15", "Damansara"],
+    ["Ravi", "Kumar", "men/41", "Cheras"],
   ] as const) {
-    const [lat, lng] = AREAS[area];
-    await db.user.create({
+    const [lat, lng, city] = AREAS[area];
+    const pendingSitter = await db.user.create({
       data: {
         email: `${first}.${last}@meraki.test`.toLowerCase(), passwordHash, role: "SITTER", status: "PENDING_REVIEW",
-        firstName: first, lastName: last, city: "New York", area, latitude: lat + jitter(), longitude: lng + jitter(),
+        phone: first === "Nadia" ? "+60 12-555 0199" : "",
+        firstName: first, lastName: last, city, area, latitude: lat + jitter(), longitude: lng + jitter(),
         avatarUrl: `https://randomuser.me/api/portraits/${photo}.jpg`,
         sitterProfile: {
           create: {
@@ -171,22 +181,44 @@ async function main() {
         },
       },
     });
+    // Nadia has submitted her application with a verification photo, so the
+    // admin queue has one ready to approve. (Needs internet for the photo.)
+    if (first === "Nadia") {
+      try {
+        const res = await fetch(`https://randomuser.me/api/portraits/${photo}.jpg`, { signal: AbortSignal.timeout(8000) });
+        if (!res.ok) throw new Error(String(res.status));
+        const bytes = Buffer.from(await res.arrayBuffer());
+        const file = await db.storedFile.create({
+          data: { ownerId: pendingSitter.id, kind: "ID_PHOTO", contentType: "image/jpeg", size: bytes.length, data: bytes },
+        });
+        await db.sitterProfile.update({
+          where: { userId: pendingSitter.id },
+          data: {
+            idPhotoId: file.id,
+            submittedAt: new Date(Date.now() - 3 * HOUR),
+            bio: "I have three years of after-school care experience and a current first-aid certificate. I love reading, crafts and outdoor play, and I keep parents updated during the evening.",
+          },
+        });
+      } catch {
+        console.warn("Couldn't download a demo verification photo; Nadia's application stays unsubmitted.");
+      }
+    }
   }
 
   // --- parents -----------------------------------------------------------------
   const parentIds: string[] = [];
   for (const [first, last, photo, area, email] of PARENTS) {
-    const [lat, lng] = AREAS[area];
+    const [lat, lng, city] = AREAS[area];
     const user = await db.user.create({
       data: {
         email, passwordHash, role: "PARENT", status: "ACTIVE",
-        firstName: first, lastName: last, city: "New York", area,
+        firstName: first, lastName: last, city, area,
         latitude: lat + jitter(), longitude: lng + jitter(),
         avatarUrl: `https://randomuser.me/api/portraits/${photo}.jpg`,
         parentProfile: {
           create: {
             childrenCount: 1 + Math.floor(rand() * 3),
-            address: `${100 + Math.floor(rand() * 400)} ${pick(["5th Ave", "Berkeley Pl", "Bedford Ave", "W 86th St", "31st St"])}, ${area}, New York`,
+            address: `No. ${1 + Math.floor(rand() * 60)}, Jalan ${pick(STREETS)} ${1 + Math.floor(rand() * 9)}, ${area}, ${city}`,
             about: "Two curious kids who love stories and being outside.",
           },
         },
@@ -205,10 +237,10 @@ async function main() {
   // --- children -----------------------------------------------------------------
   const year = new Date().getFullYear();
   const KIDS: [string, number, string][][] = [
-    [["Mia", year - 6, "Peanut allergy: no nuts at all. Loves drawing."], ["Leo", year - 3, "Naps 1-3 PM, needs his blue blanket."]],
-    [["Ava", year - 8, ""]],
-    [["Noah", year - 5, "Bedtime 7:30 PM, two stories."], ["Ella", year - 2, ""]],
-    [["Sam", year - 10, "Homework before screen time."]],
+    [["Sofia", year - 6, "Peanut allergy: no nuts at all. Loves drawing."], ["Adam", year - 3, "Naps 1-3 PM, needs his blue blanket."]],
+    [["Jia Hui", year - 8, ""]],
+    [["Ilyas", year - 5, "Bedtime 8:30 PM, two stories."], ["Hana", year - 2, ""]],
+    [["Arvin", year - 10, "Homework before screen time."]],
   ];
   for (let i = 0; i < parentIds.length; i++) {
     for (const [firstName, birthYear, notes] of KIDS[i]) {
@@ -221,7 +253,7 @@ async function main() {
   const now = Date.now();
   const atHour = (daysFromNow: number, hour: number) => {
     const d = new Date(now + daysFromNow * 24 * HOUR);
-    d.setUTCHours(hour + 4, 0, 0, 0); // roughly New York evening in UTC
+    d.setUTCHours(hour - 8, 0, 0, 0); // Malaysia time (UTC+8) to UTC
     return d;
   };
 
@@ -300,9 +332,9 @@ async function main() {
   }
 
   // Link children to the demo parent's open bookings so sitters see names and ages.
-  const oliviaKids = await db.child.findMany({ where: { parentId: parentIds[0] } });
+  const demoKids = await db.child.findMany({ where: { parentId: parentIds[0] } });
   for (const b of await db.booking.findMany({ where: { parentId: parentIds[0], status: { in: ["REQUESTED", "ACCEPTED"] } } })) {
-    await db.bookingChild.createMany({ data: oliviaKids.map((c) => ({ bookingId: b.id, childId: c.id })) });
+    await db.bookingChild.createMany({ data: demoKids.map((c) => ({ bookingId: b.id, childId: c.id })) });
   }
 
   // --- job board -------------------------------------------------------------------
@@ -320,20 +352,20 @@ async function main() {
     });
   };
   const dateNight = await job("parent@meraki.test", 8, 18, 5, "Date night, two kids",
-    "Dinner, bath and bedtime for Mia (6) and Leo (3). Mia has a nut allergy. We have a friendly cat.", 25, 2);
+    "Dinner, bath and bedtime for Sofia (6) and Adam (3). Sofia has a nut allergy. We have a friendly cat.", 25, 2);
   await job("zara.hussain@meraki.test", 4, 11, 4, "After-school pickup and homework help",
-    "Pick up Noah from school at 3:15, snack, homework, play until we're home around 7.", 24, 2);
+    "Pick up Ilyas from school at 3:15, snack, homework, play until we're home around 7.", 24, 2);
   await job("zara.hussain@meraki.test", 11, 9, 8, "Full day with a toddler and a 5-year-old",
-    "Park in the morning, lunch, nap time for Ella. Experience with toddlers needed.", 26, 2);
-  await job("liam.oconnell@meraki.test", 6, 15, 4, "Evening sitter in Astoria", "Homework and dinner for Sam (10).", 22, 1);
+    "Park in the morning, lunch, nap time for Hana. Experience with toddlers needed.", 26, 2);
+  await job("suresh.nair@meraki.test", 6, 15, 4, "Evening sitter in Cheras", "Homework and dinner for Arvin (10).", 22, 1);
   for (const [i, message] of [
-    [11, "Hi Olivia! I'm free that evening and I'm a swim instructor, so bath time is my specialty. I always check allergies twice."],
-    [15, "Hello! I've looked after toddlers for 8 years and love bedtime stories. I live a few minutes away in Brooklyn Heights."],
+    [11, "Hi Aisha! I'm free that evening and I'm a swim instructor, so bath time is my specialty. I always check allergies twice."],
+    [15, "Hello! I've looked after toddlers for 8 years and love bedtime stories. I live a few minutes away in Bangsar."],
   ] as const) {
     await db.jobApplication.create({ data: { jobId: dateNight.id, sitterId: sitterIds[i], message, createdAt: new Date(now - 2 * HOUR) } });
   }
-  await db.notification.create({ data: { userId: parentIds[0], title: "New applicant", body: "Isabel applied to “Date night, two kids”.", href: `/jobs/${dateNight.id}` } });
-  await db.notification.create({ data: { userId: sitterIds[0], title: "New job near you", body: "After-school pickup and homework help in Williamsburg.", href: "/sitter/jobs" } });
+  await db.notification.create({ data: { userId: parentIds[0], title: "New applicant", body: "Rachel applied to “Date night, two kids”.", href: `/jobs/${dateNight.id}` } });
+  await db.notification.create({ data: { userId: sitterIds[0], title: "New job near you", body: "After-school pickup and homework help in Mont Kiara.", href: "/sitter/jobs" } });
 
   await db.favorite.createMany({
     data: [0, 2, 5].map((i) => ({ parentId: parentIds[0], sitterId: sitterIds[i] })),

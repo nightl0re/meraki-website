@@ -154,7 +154,7 @@ export default async function SittersPage({ searchParams }: PageProps<"/sitters"
           {geocodeFailed && (
             <div className="mb-5">
               <Alert tone="warn">
-                We couldn&apos;t find &ldquo;{nearText}&rdquo;. Try a ZIP code, a street address, or pick a neighborhood above.
+                We couldn&apos;t find &ldquo;{nearText}&rdquo;. Try a postcode, a street address, or pick a neighborhood above.
               </Alert>
             </div>
           )}

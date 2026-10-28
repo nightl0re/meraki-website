@@ -2,10 +2,12 @@
 
 export const config = {
   appName: "Meraki",
-  currency: process.env.NEXT_PUBLIC_CURRENCY ?? "USD",
-  locale: process.env.NEXT_PUBLIC_LOCALE ?? "en-US",
+  // Defaults are for the Malaysia launch. Another country only needs these
+  // environment variables changed (currency, locale, time zone, geocoder country).
+  currency: process.env.NEXT_PUBLIC_CURRENCY ?? "MYR",
+  locale: process.env.NEXT_PUBLIC_LOCALE ?? "en-MY",
   // Bookings are entered and shown in this time zone.
-  timeZone: process.env.APP_TIMEZONE ?? "UTC",
+  timeZone: process.env.APP_TIMEZONE ?? "Asia/Kuala_Lumpur",
 
   // Parent pays rate x hours + a service fee. The sitter keeps the full rate.
   serviceFeeRate: 0.1,

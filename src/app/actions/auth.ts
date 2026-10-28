@@ -74,7 +74,7 @@ export async function login(_: FormState, form: FormData): Promise<FormState> {
   await createSession(user.id);
   // Drop any pages cached in the browser for the previous account.
   revalidatePath("/", "layout");
-  redirect(safeNext(form.get("next"), user.role) ?? homeFor(user.role));
+  redirect(safeNext(form.get("next"), user.role) ?? homeFor(user.role, user.status));
 }
 
 // Comparing against a throwaway hash keeps response time equal for unknown emails.
@@ -87,7 +87,7 @@ const signupSchema = z.object({
   lastName: z.string().trim().min(1, "Enter your last name.").max(60),
   email: z.email("Enter a valid email address.").transform((v) => v.toLowerCase().trim()),
   phone: z.string().trim().max(30).regex(/^[\d\s()+.-]*$/, "Use digits, spaces and + ( ) - only.").optional().default(""),
-  area: z.string().trim().min(2, "Tell us your neighborhood or ZIP code.").max(120),
+  area: z.string().trim().min(2, "Tell us your neighborhood or postcode.").max(120),
   password: passwordRule,
   terms: z.literal("on", { error: "Please accept the terms to continue." }),
 });
@@ -131,11 +131,9 @@ export async function signup(_: FormState, form: FormData): Promise<FormState> {
   });
 
   if (d.role === "SITTER") {
-    const admins = await db.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
-    for (const a of admins) {
-      await notify(a.id, "New sitter application", `${d.firstName} ${d.lastName} signed up as a sitter.`, "/admin/sitters");
-    }
-    await notify(user.id, "Welcome to Meraki", "Finish your profile and availability. We'll review it within one business day.", "/sitter/profile");
+    // Admins are told once the sitter submits the application (with the
+    // verification photo), not at sign-up.
+    await notify(user.id, "Welcome to Meraki", "Take your verification photo and finish your profile, then submit it for review.", "/sitter/application");
   } else {
     await notify(user.id, "Welcome to Meraki", "Add your children and a card, then find a sitter near you. You're only charged after the job.", "/parent/family");
   }
@@ -143,7 +141,7 @@ export async function signup(_: FormState, form: FormData): Promise<FormState> {
 
   await createSession(user.id);
   revalidatePath("/", "layout");
-  redirect(d.role === "SITTER" ? "/sitter/profile?welcome=1" : "/parent?welcome=1");
+  redirect(d.role === "SITTER" ? "/sitter/application?welcome=1" : "/parent?welcome=1");
 }
 
 export async function logout() {

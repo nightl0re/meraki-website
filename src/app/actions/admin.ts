@@ -11,20 +11,32 @@ import type { FormState } from "./auth";
 export async function reviewSitter(form: FormData) {
   const admin = await requireUser(["ADMIN"]);
   const id = String(form.get("userId") ?? "");
-  const decision = form.get("decision") === "approve" ? "approve" : "reject";
-  const sitter = await db.user.findFirst({ where: { id, role: "SITTER" } });
-  if (!sitter) return;
+  const raw = String(form.get("decision") ?? "");
+  const decision = raw === "approve" ? "approve" : raw === "changes" ? "changes" : "reject";
+  const sitter = await db.user.findFirst({
+    where: { id, role: "SITTER", status: "PENDING_REVIEW" },
+    include: { sitterProfile: { select: { submittedAt: true, idPhotoId: true } } },
+  });
+  if (!sitter?.sitterProfile) return;
+
   if (decision === "approve") {
+    // Only applications that were submitted with a verification photo.
+    if (!sitter.sitterProfile.submittedAt || !sitter.sitterProfile.idPhotoId) return;
     await db.$transaction([
       db.user.update({ where: { id }, data: { status: "ACTIVE" } }),
       db.sitterProfile.update({
         where: { userId: id },
-        data: { verifiedAt: new Date(), ...(form.get("backgroundCheck") === "on" ? { backgroundCheckAt: new Date() } : {}) },
+        data: { verifiedAt: new Date(), reviewNote: "", ...(form.get("backgroundCheck") === "on" ? { backgroundCheckAt: new Date() } : {}) },
       }),
     ]);
-    await notify(id, "You're verified!", "Your profile is now live. Families nearby can find and book you.", "/sitter");
+    await notify(id, "You're approved!", "Your profile is now live. Families nearby can find and book you.", "/sitter");
+  } else if (decision === "changes") {
+    const note = String(form.get("note") ?? "").trim().slice(0, 500) || "Please retake your verification photo so your face is clearly visible.";
+    await db.sitterProfile.update({ where: { userId: id }, data: { submittedAt: null, reviewNote: note } });
+    await notify(id, "Please update your application", note, "/sitter/application");
   } else {
     await db.user.update({ where: { id }, data: { status: "REJECTED" } });
+    await db.session.deleteMany({ where: { userId: id } });
   }
   await audit(admin.id, `sitter.${decision}`, "User", id);
   revalidatePath("/admin/sitters");

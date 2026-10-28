@@ -2,7 +2,7 @@
 
 # Meraki: caring babysitters, near you
 
-Meraki is a babysitting marketplace. Parents find verified sitters near their address, request a time, and are only charged after the job. Sitters set their own rate, hours and travel distance. An admin team verifies sitters, settles disputes and sends payouts.
+Meraki is a babysitting marketplace, launching first in the Klang Valley, Malaysia. Currency, language, time zone and geocoder country are settings, so it can run in any country. Parents find verified sitters near their address, request a time, and are only charged after the job. Sitters set their own rate, hours and travel distance. An admin team verifies sitters, settles disputes and sends payouts.
 
 This is the web rebuild of the original Meraki Windows Forms app. It keeps the brand, colors and features of the desktop app and redesigns the structure, booking flow and payments.
 
@@ -18,6 +18,7 @@ This is the web rebuild of the original Meraki Windows Forms app. It keeps the b
 - Message the sitter on each booking, save favorite sitters, see receipts, leave reviews.
 
 **Sitters**
+- Sign-up is an application: take a verification (face) photo with the camera or upload one, add a profile photo, profile, availability and phone, then submit. Until an admin approves it, the sitter only sees their application page. Admins compare the private verification photo with the profile photo, then approve, reject or ask for a change.
 - Home dashboard like the original app: earnings, bookings, rating and hours tiles; accept/decline requests inline; month calendar schedule; jobs near you; profile card with badges and a profile-strength checklist.
 - Job board: browse open jobs within your travel distance, apply with a message, track applications.
 - Trust badges: ID verified, background check, CPR certified, languages; public response time and repeat families.
@@ -64,6 +65,9 @@ Test cards (any future expiry, any CVC):
 
 ## Security
 
+- Verification photos are private: `/files/[id]` only returns them to the sitter who uploaded them and to admins, with `Cache-Control: private, no-store`. Uploads are checked by their first bytes, limited to 2 MB, and re-encoded in the browser, which also strips location metadata.
+- `npm run db:seed`, `npm run db:samples` and `npm test` refuse to run when `DATABASE_URL` isn't on this computer, because they delete or write data. Set `ALLOW_REMOTE_DB=1` to override on purpose.
+
 - Passwords hashed with bcrypt (cost 12), with a shared policy (length, letters and digits, common passwords blocked).
 - Sessions: random token in an httpOnly, SameSite cookie; only its SHA-256 hash is stored. Rotated on login, 30-day absolute and 7-day idle expiry, all sessions revoked on password change/reset or suspension.
 - Account lockout after 8 wrong passwords (15 minutes) plus database-backed rate limits on login, sign-up and password reset.
@@ -76,7 +80,7 @@ Test cards (any future expiry, any CVC):
 
 - **Next.js 16** (App Router, Server Components, Server Actions) + **React 19** + **TypeScript**
 - **PostgreSQL** (Prisma Postgres in production) with **Prisma** ORM
-- Profile photos in **Vercel Blob** (local disk in development)
+- Photos stored in the database (`StoredFile` table) and served by `/files/[id]`; resized in the browser before upload
 - **Tailwind CSS v4**, Motion, Phosphor icons, Quicksand + Nunito fonts
 - Sessions: random token in an httpOnly cookie, SHA-256 hash stored in the database; passwords hashed with bcrypt (cost 12)
 - Zod validation on every form, rate-limited login and signup
@@ -91,7 +95,7 @@ npm install
 npx prisma dev --name meraki --detach   # starts a local Postgres, prints its TCP URL
 cp .env.example .env        # set DATABASE_URL to that postgres:// URL (and the other values)
 npm run db:migrate          # create the tables
-npm run db:seed             # demo data in New York neighborhoods
+npm run db:seed             # demo data in Klang Valley neighbourhoods (Malaysia)
 npm run dev                 # http://localhost:3000
 ```
 
@@ -138,8 +142,8 @@ tests/                 booking flow tests
 
 ## Deploying to Vercel
 
-1. In the Vercel project, open **Storage** and add **Prisma Postgres**, then **Blob**, and connect both to the project. This adds `DATABASE_URL` (or a similarly named Postgres URL) and `BLOB_READ_WRITE_TOKEN` to the environment variables. `DATABASE_URL` must be the direct `postgres://` connection string.
-2. In **Settings → Environment Variables**, add `APP_TIMEZONE`, `NEXT_PUBLIC_CURRENCY`, `NEXT_PUBLIC_LOCALE`, `GEOCODER_COUNTRY`, `GEOCODER_USER_AGENT`, `CRON_SECRET` (a long random string) and `APP_URL` (your site's URL). See `.env.example`.
+1. In the Vercel project, open **Storage**, add **Prisma Postgres** and connect it to the project (use the prefix `DATABASE`, so the variable is `DATABASE_URL`). Photos are stored in the database, so no other storage is needed.
+2. In **Settings → Environment Variables**, add `GEOCODER_USER_AGENT`, `CRON_SECRET` (a long random string) and `APP_URL` (your site's URL). The country settings default to Malaysia (`NEXT_PUBLIC_CURRENCY=MYR`, `NEXT_PUBLIC_LOCALE=en-MY`, `APP_TIMEZONE=Asia/Kuala_Lumpur`, `GEOCODER_COUNTRY=my`); set them only to launch in another country.
 3. Redeploy. The `vercel-build` script runs `prisma migrate deploy` before `next build`, so the tables are created automatically. Pages are never prerendered, so the build doesn't touch the database.
 4. Optional demo data: on your computer, run `npm run db:seed` with `DATABASE_URL` pointing at the production database. This **wipes** that database first and creates demo accounts with known passwords, so only do it for a demo site.
 

@@ -74,7 +74,7 @@ export function LocationSearch({
           id="near"
           name="near"
           defaultValue={defaultValue === "Your location" ? "" : defaultValue}
-          placeholder={defaultValue === "Your location" ? "Using your location" : "Address, ZIP code or neighborhood"}
+          placeholder={defaultValue === "Your location" ? "Using your location" : "Address, postcode or neighborhood"}
           autoComplete="street-address"
           className={cn(
             "min-w-0 flex-1 bg-transparent text-ink placeholder:text-ink-3 focus:outline-none",

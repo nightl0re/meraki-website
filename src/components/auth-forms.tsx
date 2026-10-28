@@ -68,12 +68,12 @@ export function SignupForm({ defaultRole }: { defaultRole: "PARENT" | "SITTER" }
         <Input id="email" name="email" type="email" autoComplete="email" defaultValue={v?.email} aria-invalid={!!err("email")} required />
       </Field>
       <Field
-        label={role === "SITTER" ? "Where are you based?" : "Your neighborhood or ZIP code"}
+        label={role === "SITTER" ? "Where are you based?" : "Your neighborhood or postcode"}
         htmlFor="area"
         error={err("area")}
         hint={role === "SITTER" ? "Families see your neighborhood and distance, never your address." : "Used to show sitters near you."}
       >
-        <Input id="area" name="area" autoComplete="postal-code" placeholder="e.g. Park Slope or 11215" defaultValue={v?.area} aria-invalid={!!err("area")} required />
+        <Input id="area" name="area" autoComplete="postal-code" placeholder="e.g. Bangsar or 59100" defaultValue={v?.area} aria-invalid={!!err("area")} required />
       </Field>
       <Field label="Phone (optional)" htmlFor="phone" error={err("phone")} hint="Shared only with confirmed bookings.">
         <Input id="phone" name="phone" type="tel" autoComplete="tel" defaultValue={v?.phone} />

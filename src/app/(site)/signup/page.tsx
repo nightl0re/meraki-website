@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Sign up" };
 
 export default async function SignupPage({ searchParams }: PageProps<"/signup">) {
   const user = await getCurrentUser();
-  if (user) redirect(homeFor(user.role));
+  if (user) redirect(homeFor(user.role, user.status));
   const role = (await searchParams).role === "sitter" ? "SITTER" : "PARENT";
 
   return (

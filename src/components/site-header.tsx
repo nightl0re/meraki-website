@@ -23,7 +23,7 @@ export async function SiteHeader({ variant = "site" }: { variant?: "site" | "app
     <header className="sticky top-0 z-30 border-b border-line bg-white/90 backdrop-blur-md print:hidden">
       <div className={cn("mx-auto flex h-16 items-center justify-between gap-4 px-4 sm:px-6", variant === "app" ? "max-w-[1400px]" : "max-w-7xl")}>
         <div className="flex items-center gap-8">
-          <Logo href={user ? homeFor(user.role) : "/"} />
+          <Logo href={user ? homeFor(user.role, user.status) : "/"} />
           {variant === "site" && (
             <nav aria-label="Main" className="hidden items-center gap-1 md:flex">
               {PUBLIC_LINKS.map((l) => (
@@ -39,7 +39,7 @@ export async function SiteHeader({ variant = "site" }: { variant?: "site" | "app
           {user ? (
             <>
               {variant === "site" && (
-                <LinkButton href={homeFor(user.role)} variant="secondary" size="sm" className="hidden sm:inline-flex">
+                <LinkButton href={homeFor(user.role, user.status)} variant="secondary" size="sm" className="hidden sm:inline-flex">
                   My dashboard
                 </LinkButton>
               )}
@@ -70,7 +70,7 @@ export async function SiteHeader({ variant = "site" }: { variant?: "site" | "app
             </div>
           )}
           <MobileMenu
-            links={user ? navFor(user.role).map(({ href, label }) => ({ href, label })) : [...PUBLIC_LINKS, { href: "/login", label: "Log in" }, { href: "/signup", label: "Sign up" }]}
+            links={user ? navFor(user.role, user.status).map(({ href, label }) => ({ href, label })) : [...PUBLIC_LINKS, { href: "/login", label: "Log in" }, { href: "/signup", label: "Sign up" }]}
             hideFrom={variant === "app" ? "lg" : "md"}
             logoutAction={user ? logout : undefined}
             who={user ? `${user.firstName} ${user.lastName}, ${roleLabel(user.role)} account` : undefined}

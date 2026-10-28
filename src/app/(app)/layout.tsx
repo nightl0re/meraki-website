@@ -31,7 +31,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       <div className="mx-auto grid w-full max-w-[1400px] flex-1 grid-cols-1 gap-8 px-4 py-6 sm:px-6 md:py-8 lg:grid-cols-[248px_minmax(0,1fr)]">
         {user && (
           <AppSidebar
-            items={navFor(user.role)}
+            items={navFor(user.role, user.status)}
             counts={counts}
             logoutAction={logout}
             profile={

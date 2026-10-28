@@ -4,6 +4,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { deleteFile, saveImage } from "@/lib/files";
+import { audit, notify } from "@/lib/notify";
+import { applicationMissing } from "@/lib/sitter-application";
 import { config } from "@/lib/config";
 import { geocode } from "@/lib/geo";
 import type { FormState } from "./auth";
@@ -16,6 +19,7 @@ export async function setAccepting(form: FormData) {
   });
   revalidatePath("/sitter");
   revalidatePath("/sitter/profile");
+  revalidatePath("/sitter/application");
 }
 
 const profileSchema = z.object({
@@ -28,14 +32,14 @@ const profileSchema = z.object({
   experienceYears: z.coerce.number().int().min(0).max(60),
   maxChildren: z.coerce.number().int().min(1).max(8),
   serviceRadiusKm: z.coerce.number().int().min(1).max(50),
-  area: z.string().trim().min(2, "Enter your neighborhood or ZIP code.").max(120),
+  area: z.string().trim().min(2, "Enter your neighborhood or postcode.").max(120),
   skills: z.array(z.coerce.number().int()).max(14),
   languages: z.string().trim().max(120).regex(/^[\p{L} ,.-]*$/u, "Use letters and commas only."),
   cprCertified: z.boolean(),
 });
 
 export async function updateSitterProfile(_: FormState, form: FormData): Promise<FormState> {
-  const user = await requireUser(["SITTER"]);
+  const user = await requireUser(["SITTER"], { allowPendingSitter: true });
   const raw = { ...Object.fromEntries(form), skills: form.getAll("skills"), cprCertified: form.get("cprCertified") === "on" };
   const parsed = profileSchema.safeParse(raw);
   const values = Object.fromEntries(Object.entries(Object.fromEntries(form)).map(([k, v]) => [k, String(v)]));
@@ -46,7 +50,7 @@ export async function updateSitterProfile(_: FormState, form: FormData): Promise
   let location = {};
   if (d.area !== current.area || current.latitude == null) {
     const place = await geocode(d.area);
-    if (!place) return { fieldErrors: { area: ["We couldn't find that place. Try a ZIP code."] }, values };
+    if (!place) return { fieldErrors: { area: ["We couldn't find that place. Try a postcode."] }, values };
     location = { area: place.label.split(",")[0].trim(), latitude: place.lat, longitude: place.lng };
   }
 
@@ -69,12 +73,13 @@ export async function updateSitterProfile(_: FormState, form: FormData): Promise
     db.sitterSkill.createMany({ data: d.skills.map((skillId) => ({ sitterId: user.id, skillId })), skipDuplicates: true }),
   ]);
   revalidatePath("/sitter/profile");
+  revalidatePath("/sitter/application");
   revalidatePath(`/sitters/${user.id}`);
   return { ok: true, message: "Profile saved." };
 }
 
 export async function saveAvailability(_: FormState, form: FormData): Promise<FormState> {
-  const user = await requireUser(["SITTER"]);
+  const user = await requireUser(["SITTER"], { allowPendingSitter: true });
   const rows: { sitterId: string; weekday: number; startMinute: number; endMinute: number }[] = [];
   for (let day = 0; day < 7; day++) {
     if (form.get(`on_${day}`) !== "on") continue;
@@ -90,6 +95,43 @@ export async function saveAvailability(_: FormState, form: FormData): Promise<Fo
     db.availability.createMany({ data: rows }),
   ]);
   revalidatePath("/sitter/profile");
+  revalidatePath("/sitter/application");
   revalidatePath(`/sitters/${user.id}`);
   return { ok: true, message: rows.length ? "Availability saved." : "Availability cleared. Families can't book you until you add some." };
+}
+
+// --- application / verification -------------------------------------------------
+
+export async function uploadIdPhoto(_: FormState, form: FormData): Promise<FormState> {
+  const user = await requireUser(["SITTER"], { allowPendingSitter: true });
+  const file = form.get("photo");
+  if (!(file instanceof File) || file.size === 0) return { error: "Take or choose a photo first." };
+  const saved = await saveImage(user.id, "ID_PHOTO", file);
+  if (!saved.ok) return { error: saved.error };
+  const profile = await db.sitterProfile.findUniqueOrThrow({ where: { userId: user.id }, select: { idPhotoId: true } });
+  await db.sitterProfile.update({ where: { userId: user.id }, data: { idPhotoId: saved.id } });
+  await deleteFile(user.id, profile.idPhotoId);
+  await audit(user.id, "sitter.id_photo_uploaded", "User", user.id);
+  revalidatePath("/sitter/application");
+  return { ok: true, message: "Verification photo saved. Only our review team can see it." };
+}
+
+export async function submitApplication(): Promise<FormState> {
+  const user = await requireUser(["SITTER"], { allowPendingSitter: true });
+  if (user.status === "ACTIVE") return { error: "Your profile is already approved." };
+  const missing = await applicationMissing(user.id);
+  if (missing.length) return { error: `Almost there. Still to do: ${missing.join(", ").toLowerCase()}.` };
+  const res = await db.sitterProfile.updateMany({
+    where: { userId: user.id, submittedAt: null },
+    data: { submittedAt: new Date(), reviewNote: "" },
+  });
+  if (res.count === 1) {
+    const admins = await db.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
+    for (const a of admins) {
+      await notify(a.id, "Sitter application to review", `${user.firstName} ${user.lastName} submitted their application.`, "/admin/sitters");
+    }
+    await audit(user.id, "sitter.application_submitted", "User", user.id);
+  }
+  revalidatePath("/sitter/application");
+  return { ok: true, message: "Application sent! We'll review it within one business day and notify you." };
 }

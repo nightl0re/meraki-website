@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 };
 
 const STEPS = [
-  { icon: MagnifyingGlass, title: "Search near your home", body: "Type your address or ZIP code, or pick your neighborhood. You only see sitters who travel to you, with their real weekly availability, rate and reviews." },
+  { icon: MagnifyingGlass, title: "Search near your home", body: "Type your address or postcode, or pick your neighborhood. You only see sitters who travel to you, with their real weekly availability, rate and reviews." },
   { icon: Briefcase, title: "Or post a job", body: "Tell us when you need help and your budget. Sitters nearby are notified and apply with a message. You compare them side by side and hire in one click." },
   { icon: CalendarCheck, title: "Request a time", body: `Pick a slot inside the sitter's availability and choose which children they'll look after. They have ${config.sitterResponseHours} hours to accept.` },
   { icon: ChatCircleText, title: "Plan the details", body: "Message your sitter about routines, allergies and directions. Your address and phone number are only shared once they accept." },
@@ -31,13 +31,21 @@ const TRUST = [
   { icon: Eye, title: "Privacy by default", body: "Nobody sees your exact location. Sitters see your neighborhood until they accept, and card numbers are never stored." },
 ];
 
+const WHY = [
+  { title: "The problem", body: "Many parents find babysitters through social media groups or friends. They cannot check who the person is, reviews may not be real, and they often pay before the job is done." },
+  { title: "What Meraki does", body: "Every sitter is checked by a person before they appear in search. Families book inside the sitter's real hours, and the money is held until the parent confirms the job went well." },
+  { title: "Who it helps", body: "Working parents get safe childcare close to home. Students, mothers and retirees get flexible, fair-paid work with a profile that builds trust over time." },
+];
+
 const FAQ = [
   { q: "How much does Meraki cost?", a: `Joining is free. When you book, you pay the sitter's hourly rate plus a ${Math.round(config.serviceFeeRate * 100)}% service fee (minimum ${formatMoney(config.serviceFeeMinCents)}). There's no subscription.` },
   { q: "When is my card charged?", a: `Only after the job. We place a hold when you book. You're charged when you confirm, or automatically ${config.autoConfirmHours} hours after the job if you don't respond.` },
+  { q: "How can I pay?", a: "This demo accepts cards (payments are simulated). For the Malaysia launch we plan to add FPX online banking, Touch 'n Go eWallet and GrabPay through the same payment step." },
   { q: "What if I need to cancel?", a: `Cancelling is free until ${config.freeCancelHours} hours before the start. After that, ${Math.round(config.lateCancelFeeRate * 100)}% of the sitter's pay is charged and goes to the sitter, who kept that time free for you.` },
   { q: "What if something goes wrong?", a: "Use “Report a problem” on the booking. The payment is paused and our team contacts you and the sitter, usually within one business day, and decides on a full or partial refund." },
   { q: "Can I book the same sitter again?", a: "Yes. Your home page has a “Book again” list with every sitter you've used, and you can save favorites." },
-  { q: "Which areas do you cover?", a: "Any area where sitters have joined. Search your address to see who travels to you, or browse by neighborhood." },
+  { q: "Which areas do you cover?", a: "We are starting in the Klang Valley, Malaysia. Meraki works in any area where sitters have joined: search your address to see who travels to you, or browse by neighbourhood." },
+  { q: "Is Meraki only for Malaysia?", a: "No. Currency, language, time zone and country are settings, so Meraki can launch in a new country without rebuilding the platform. We have already made a local version for Tashkent, Uzbekistan." },
 ];
 
 export default function AboutPage() {
@@ -57,6 +65,25 @@ export default function AboutPage() {
           </div>
         </div>
         <Image src={logo} alt="The Meraki logo: a mother hugging a smiling toddler, with the words Caring Babysitters" className="mx-auto w-full max-w-sm rounded-[28px] shadow-card" loading="eager" fetchPriority="high" sizes="(min-width: 1024px) 384px, 90vw" />
+      </section>
+
+      <section className="border-t border-line">
+        <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 md:py-24">
+          <h2 className="text-3xl font-bold md:text-4xl">Why we built Meraki</h2>
+          <ul className="mt-10 grid grid-cols-1 gap-8 md:grid-cols-3">
+            {WHY.map((w) => (
+              <li key={w.title}>
+                <h3 className="text-lg font-semibold">{w.title}</h3>
+                <p className="mt-1.5 text-ink-2">{w.body}</p>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-10 max-w-3xl rounded-2xl bg-accent-soft p-6 text-ink-2">
+            <strong className="text-ink">Starting in Malaysia, built for any country.</strong> Meraki launches in the Klang Valley.
+            Currency, language, time zone and payment provider are settings, so the same platform can open in a new country.
+            A local version for Tashkent, Uzbekistan, already exists.
+          </p>
+        </div>
       </section>
 
       <section className="bg-surface-2">

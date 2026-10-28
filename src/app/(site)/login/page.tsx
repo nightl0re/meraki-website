@@ -29,7 +29,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
             </div>
           </div>
           <div className="mt-6 flex flex-col gap-3">
-            <LinkButton href={homeFor(user.role)} size="lg">Continue as {user.firstName}</LinkButton>
+            <LinkButton href={homeFor(user.role, user.status)} size="lg">Continue as {user.firstName}</LinkButton>
             <form action={logout}>
               <button className={buttonClass("secondary", "lg", "w-full")}>Log out and use another account</button>
             </form>

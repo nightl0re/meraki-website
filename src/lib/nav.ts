@@ -10,7 +10,11 @@ export type IconName =
 export type NavItem = { href: string; label: string; icon: IconName; badge?: NavBadge };
 export type NavBadge = "bookingsAction" | "jobApplicants" | "jobsNear" | "requests" | "notifications" | "pendingSitters" | "disputes";
 
-export function navFor(role: Role): NavItem[] {
+export function navFor(role: Role, status = "ACTIVE"): NavItem[] {
+  // Babysitters waiting for approval only have their application.
+  if (role === "SITTER" && status !== "ACTIVE") {
+    return [{ href: "/sitter/application", label: "My application", icon: "check" }];
+  }
   if (role === "PARENT") {
     return [
       { href: "/parent", label: "Home", icon: "home" },

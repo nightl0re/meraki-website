@@ -6,6 +6,8 @@ import type { FormState } from "@/app/actions/auth";
 import { changePassword, updateAccount, uploadAvatar } from "@/app/actions/account";
 import { saveAvailability, updateSitterProfile } from "@/app/actions/sitter";
 import { WEEKDAYS, formatMinutes } from "@/lib/format";
+import { config } from "@/lib/config";
+import { shrinkImage } from "@/lib/shrink-image";
 import { SubmitButton } from "./submit-button";
 import { Alert, Avatar, Field, Input, Select, Textarea, cn } from "./ui";
 
@@ -28,15 +30,22 @@ export function AvatarForm({ user }: { user: { firstName: string; lastName: stri
           <input
             type="file"
             name="photo"
-            accept="image/jpeg,image/png,image/webp"
+            accept="image/*"
             className="sr-only"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              setPreview(f ? URL.createObjectURL(f) : null);
+            onChange={async (e) => {
+              const input = e.currentTarget;
+              const f = input.files?.[0];
+              if (!f) return setPreview(null);
+              // Resize in the browser so large phone photos fit the 2 MB limit.
+              const small = await shrinkImage(f, 800).catch(() => f);
+              const dt = new DataTransfer();
+              dt.items.add(small);
+              input.files = dt.files;
+              setPreview(URL.createObjectURL(small));
             }}
           />
         </label>
-        <p className="text-xs text-ink-3">JPG, PNG or WebP, up to 2 MB. A clear, friendly face photo helps families choose you.</p>
+        <p className="text-xs text-ink-3">A clear, friendly photo of your face. Large photos are resized automatically.</p>
         {preview && <SubmitButton size="sm" pendingText="Uploading">Save photo</SubmitButton>}
         <Status state={state} />
       </div>
@@ -66,7 +75,7 @@ export function AccountForm({ user }: { user: { firstName: string; lastName: str
         <Field label="Phone" htmlFor="phone" error={err("phone")}>
           <Input id="phone" name="phone" type="tel" defaultValue={v.phone} autoComplete="tel" />
         </Field>
-        <Field label="Neighborhood or ZIP code" htmlFor="area" error={err("area")} hint="Used for sitters near you.">
+        <Field label="Neighborhood or postcode" htmlFor="area" error={err("area")} hint="Used for sitters near you.">
           <Input id="area" name="area" defaultValue={v.area} autoComplete="postal-code" />
         </Field>
       </div>
@@ -115,7 +124,7 @@ export function SitterProfileForm({ profile, allSkills }: SitterProfileProps) {
         <Textarea id="bio" name="bio" rows={6} maxLength={2000} value={bio} onChange={(e) => setBio(e.target.value)} />
       </Field>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Field label="Hourly rate (USD)" htmlFor="hourlyRate" error={err("hourlyRate")}>
+        <Field label={`Hourly rate (${config.currency})`} htmlFor="hourlyRate" error={err("hourlyRate")}>
           <Input id="hourlyRate" name="hourlyRate" type="number" step="0.5" min={10} max={100} inputMode="decimal" defaultValue={v?.hourlyRate ?? profile.hourlyRate} />
         </Field>
         <Field label="Years of experience" htmlFor="experienceYears" error={err("experienceYears")}>
@@ -128,7 +137,7 @@ export function SitterProfileForm({ profile, allSkills }: SitterProfileProps) {
         </Field>
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Home neighborhood or ZIP code" htmlFor="area" error={err("area")} hint="Families see the neighborhood and distance only.">
+        <Field label="Home neighborhood or postcode" htmlFor="area" error={err("area")} hint="Families see the neighborhood and distance only.">
           <Input id="area" name="area" defaultValue={v?.area ?? profile.area} />
         </Field>
         <Field label="How far will you travel?" htmlFor="serviceRadiusKm">

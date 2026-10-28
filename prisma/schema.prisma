@@ -40,7 +40,7 @@ model User {
   phone        String     @default("") @db.VarChar(30)
   city         String     @default("") @db.VarChar(80)
   // Approximate home location, used for "near me" search. Never shown exactly.
-  area         String     @default("") @db.VarChar(120) // neighborhood label, e.g. "Park Slope"
+  area         String     @default("") @db.VarChar(120) // neighbourhood label, e.g. "Bangsar"
   latitude     Float?
   longitude    Float?
   avatarUrl    String?    @db.VarChar(500)
@@ -66,6 +66,7 @@ model User {
   payouts         Payout[]
   auditLogs       AuditLog[]
   children        Child[]
+  files           StoredFile[]
   jobs            Job[]
   applications    JobApplication[]
   resetTokens     PasswordResetToken[]
@@ -124,12 +125,18 @@ model SitterProfile {
   backgroundCheckAt DateTime? // background check cleared
   cprCertified      Boolean   @default(false)
   languages         String    @default("English") @db.VarChar(120)
+  // Sign-up verification: a private face photo only admins can see, and when
+  // the sitter submitted the application for review.
+  idPhotoId         String?   @unique
+  submittedAt       DateTime?
+  reviewNote        String    @default("") @db.VarChar(500) // admin's request for changes
   // Cached aggregates, refreshed whenever a review is written.
   ratingAvg         Float     @default(0)
   ratingCount       Int       @default(0)
   completedJobs     Int       @default(0)
 
   user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  idPhoto      StoredFile?    @relation("SitterIdPhoto", fields: [idPhotoId], references: [id], onDelete: SetNull)
   skills       SitterSkill[]
   availability Availability[]
 
@@ -145,6 +152,29 @@ model ParentProfile {
   ratingCount   Int    @default(0)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum FileKind {
+  AVATAR // public profile photo
+  ID_PHOTO // private verification photo: only the owner and admins can open it
+}
+
+// Photos are stored in the database itself, so they work the same locally and
+// on Vercel without extra storage. Served by /files/[id]; images are resized in
+// the browser before upload, so rows stay small (max 2 MB).
+model StoredFile {
+  id          String   @id @default(cuid())
+  ownerId     String
+  kind        FileKind
+  contentType String   @db.VarChar(40)
+  size        Int
+  data        Bytes
+  createdAt   DateTime @default(now())
+
+  owner        User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  idPhotoOwner SitterProfile? @relation("SitterIdPhoto")
+
+  @@index([ownerId, kind])
 }
 
 // A child on a family profile, so sitters know who they're looking after.

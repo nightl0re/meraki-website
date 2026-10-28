@@ -5,19 +5,19 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { createSession, hashPassword, requireUser, verifyPassword } from "@/lib/auth";
 import { geocode } from "@/lib/geo";
-import { deleteImage, saveImage } from "@/lib/uploads";
+import { deleteFileByUrl, saveImage } from "@/lib/files";
 import { passwordRule } from "@/lib/validation";
 import type { FormState } from "./auth";
 
 export async function uploadAvatar(_: FormState, form: FormData): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireUser(undefined, { allowPendingSitter: true });
   const file = form.get("photo");
   if (!(file instanceof File) || file.size === 0) return { error: "Choose a photo first." };
-  const saved = await saveImage(file);
+  const saved = await saveImage(user.id, "AVATAR", file);
   if (!saved.ok) return { error: saved.error };
   const old = await db.user.findUnique({ where: { id: user.id }, select: { avatarUrl: true } });
   await db.user.update({ where: { id: user.id }, data: { avatarUrl: saved.url } });
-  await deleteImage(old?.avatarUrl);
+  await deleteFileByUrl(user.id, old?.avatarUrl);
   revalidatePath("/", "layout");
   return { ok: true, message: "Photo updated." };
 }
@@ -30,7 +30,7 @@ const accountSchema = z.object({
 });
 
 export async function updateAccount(_: FormState, form: FormData): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireUser(undefined, { allowPendingSitter: true });
   const values = Object.fromEntries(Object.entries(Object.fromEntries(form)).map(([k, v]) => [k, String(v)]));
   const parsed = accountSchema.safeParse(values);
   if (!parsed.success) return { fieldErrors: z.flattenError(parsed.error).fieldErrors, values };
@@ -40,7 +40,7 @@ export async function updateAccount(_: FormState, form: FormData): Promise<FormS
   let location = {};
   if (d.area && d.area !== current.area) {
     const place = await geocode(d.area);
-    if (!place) return { fieldErrors: { area: ["We couldn't find that place. Try a ZIP code."] }, values };
+    if (!place) return { fieldErrors: { area: ["We couldn't find that place. Try a postcode."] }, values };
     location = { area: place.label.split(",")[0].trim(), latitude: place.lat, longitude: place.lng };
   }
   await db.user.update({

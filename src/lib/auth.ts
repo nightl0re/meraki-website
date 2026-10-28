@@ -7,6 +7,7 @@ import type { Role } from "@prisma/client";
 import { db } from "./db";
 import { config } from "./config";
 import { randomToken, sha256 } from "./security";
+import { SITTER_APPLICATION, homeFor, isPendingSitter } from "./roles";
 
 const COOKIE = "meraki_session";
 
@@ -94,16 +95,17 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
 });
 
 // Use at the top of every protected page and server action.
-export async function requireUser(roles?: Role[]) {
+// Babysitters who aren't approved yet can only use their application page
+// (and the actions it calls); everything else sends them back there.
+export async function requireUser(roles?: Role[], opts: { allowPendingSitter?: boolean } = {}) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  if (roles && !roles.includes(user.role)) redirect(homeFor(user.role));
+  if (roles && !roles.includes(user.role)) redirect(homeFor(user.role, user.status));
+  if (isPendingSitter(user) && !opts.allowPendingSitter) redirect(SITTER_APPLICATION);
   return user;
 }
 
-export function homeFor(role: Role) {
-  return role === "ADMIN" ? "/admin" : role === "SITTER" ? "/sitter" : "/parent";
-}
+export { SITTER_APPLICATION, homeFor, isPendingSitter } from "./roles";
 
 export const roleLabel = (role: Role) => (role === "ADMIN" ? "admin" : role === "SITTER" ? "babysitter" : "parent");
 

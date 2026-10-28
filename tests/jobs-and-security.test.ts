@@ -1,14 +1,18 @@
 // Job board (post -> apply -> hire) and security helpers, against the real database.
 
+import { assertLocalDatabase } from "../prisma/local-only";
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { db } from "@/lib/db";
 import { applyToJob, closeJob, createJob, hireApplicant, jobsNear, withdrawApplication } from "@/lib/jobs";
 import { rateLimit, sha256 } from "@/lib/security";
 import { payments } from "@/lib/payments/provider";
+import { toDateInput, zonedToUtc } from "@/lib/time";
 import { passwordRule } from "@/lib/validation";
 import type { CurrentUser } from "@/lib/auth";
 
+
+assertLocalDatabase("the tests");
 const HOUR = 3_600_000;
 const tag = `j${Date.now()}`;
 const PARK_SLOPE = { lat: 40.671, lng: -73.9814 };
@@ -19,9 +23,9 @@ const as = (u: { id: string; role: CurrentUser["role"]; firstName: string; lastN
   ...u, status: "ACTIVE", avatarUrl: null,
 });
 
+// Midday in the app's time zone `daysAhead` days from now; never crosses midnight.
 function when(daysAhead: number, hours = 3) {
-  const startsAt = new Date(Date.now() + daysAhead * 24 * HOUR);
-  startsAt.setUTCHours(17, 0, 0, 0);
+  const startsAt = zonedToUtc(toDateInput(new Date(Date.now() + daysAhead * 24 * HOUR)), "12:00")!;
   return { startsAt, endsAt: new Date(startsAt.getTime() + hours * HOUR) };
 }
 
