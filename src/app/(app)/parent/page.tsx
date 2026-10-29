@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/auth";
 import { childAge, formatDate, formatMoney, formatRate, greeting } from "@/lib/format";
 import { zonedParts } from "@/lib/time";
 import { BookingRow } from "@/components/booking-row";
+import { parentNeedsAction } from "@/lib/booking-filters";
 import { NotificationsPanel, Panel, PanelLink } from "@/components/dashboard-parts";
 import { Alert, Avatar, Card, EmptyState, LinkButton, Rating } from "@/components/ui";
 
@@ -22,7 +23,7 @@ export default async function ParentHome({ searchParams }: PageProps<"/parent">)
 
   const [toConfirm, upcoming, applicants, pastSitters, children, card, favorites] = await Promise.all([
     db.booking.findMany({
-      where: { parentId: user.id, status: "ACCEPTED", endsAt: { lte: now } },
+      where: parentNeedsAction(user.id, now),
       orderBy: { endsAt: "asc" },
       include: { sitter: personSelect },
     }),
@@ -94,8 +95,10 @@ export default async function ParentHome({ searchParams }: PageProps<"/parent">)
                 <Card key={b.id} className="flex items-center gap-4 border-brand/30 p-4">
                   <Avatar src={b.sitter.avatarUrl} first={b.sitter.firstName} last={b.sitter.lastName} size={44} />
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold">How did it go with {b.sitter.firstName}?</p>
-                    <p className="text-sm text-ink-3">{formatDate(b.startsAt)}, {formatMoney(b.totalCents)} on hold</p>
+                    <p className="font-semibold">
+                      {b.status === "AWAITING_CONFIRMATION" ? `${b.sitter.firstName} marked the job completed` : `How did it go with ${b.sitter.firstName}?`}
+                    </p>
+                    <p className="text-sm text-ink-3">{formatDate(b.startsAt)}, {formatMoney(b.totalCents)} on hold. Please confirm.</p>
                   </div>
                   <LinkButton href={`/bookings/${b.id}`} size="sm">Confirm</LinkButton>
                 </Card>

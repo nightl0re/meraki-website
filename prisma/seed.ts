@@ -276,7 +276,10 @@ async function main() {
         serviceFeeCents: fee, totalCents: total,
         respondBy: new Date(Math.min(start.getTime(), now + 20 * HOUR)),
         respondedAt: status === "REQUESTED" ? null : new Date(start.getTime() - 72 * HOUR),
-        confirmedAt: captured ? new Date(end.getTime() + 2 * HOUR) : null,
+        // Each later stage implies the earlier steps happened (for the timeline).
+        sitterDoneAt: ["AWAITING_CONFIRMATION", "AWAITING_PAYMENT", "COMPLETED", "DISPUTED"].includes(status) ? new Date(end.getTime() + 0.5 * HOUR) : null,
+        confirmedAt: ["AWAITING_PAYMENT", "COMPLETED"].includes(status) ? new Date(end.getTime() + 2 * HOUR) : null,
+        paymentApprovedAt: captured ? new Date(end.getTime() + 5 * HOUR) : null,
         createdAt: new Date(start.getTime() - 96 * HOUR),
         payment: {
           create: {
@@ -316,11 +319,13 @@ async function main() {
   // The demo parent's current situation.
   await booking(0, 0, atHour(3, 15), 4, "ACCEPTED"); // upcoming
   await booking(0, 2, atHour(6, 14), 3, "REQUESTED"); // waiting for sitter
-  await booking(0, 5, atHour(-1, 13), 4, "ACCEPTED"); // ended, awaiting confirmation
+  await booking(0, 5, atHour(-1, 13), 4, "AWAITING_CONFIRMATION"); // sitter marked done, parent must confirm
+  await booking(1, 6, atHour(-2, 13), 3, "AWAITING_PAYMENT"); // both confirmed, admin must approve
   await booking(0, 3, atHour(-12, 15), 3, "CANCELLED");
   // The demo sitter's inbox.
   await booking(1, 0, atHour(5, 16), 3, "REQUESTED");
   await booking(2, 0, atHour(9, 13), 5, "ACCEPTED");
+  await booking(3, 0, atHour(-1, 15), 3, "ACCEPTED"); // happened yesterday: sitter should mark it completed
   // A dispute for the admin.
   await booking(3, 4, atHour(-2, 14), 4, "DISPUTED");
   await db.booking.updateMany({ where: { status: "DISPUTED" }, data: { disputeReason: "The sitter arrived 50 minutes late and left early." } });

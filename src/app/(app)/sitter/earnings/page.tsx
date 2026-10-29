@@ -35,7 +35,7 @@ export default async function EarningsPage() {
         </div>
       </dl>
       {payouts.length === 0 ? (
-        <EmptyState icon={<Wallet size={32} />} title="No earnings yet" body="When a family confirms a job, your pay appears here." />
+        <EmptyState icon={<Wallet size={32} />} title="No earnings yet" body="When a job you marked completed is confirmed and approved, your pay appears here." />
       ) : (
         <Card className="overflow-x-auto">
           <table className="w-full min-w-[560px] text-sm">

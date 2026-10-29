@@ -8,7 +8,7 @@ export type IconName =
   | "wallet" | "user" | "check" | "scales" | "users" | "chart" | "info";
 
 export type NavItem = { href: string; label: string; icon: IconName; badge?: NavBadge };
-export type NavBadge = "bookingsAction" | "jobApplicants" | "jobsNear" | "requests" | "notifications" | "pendingSitters" | "disputes";
+export type NavBadge = "bookingsAction" | "jobApplicants" | "jobsNear" | "requests" | "notifications" | "pendingSitters" | "disputes" | "paymentsToApprove";
 
 export function navFor(role: Role, status = "ACTIVE"): NavItem[] {
   // Babysitters waiting for approval only have their application.
@@ -42,6 +42,7 @@ export function navFor(role: Role, status = "ACTIVE"): NavItem[] {
   return [
     { href: "/admin", label: "Overview", icon: "chart" },
     { href: "/admin/sitters", label: "Sitter approvals", icon: "check", badge: "pendingSitters" },
+    { href: "/admin/payments", label: "Payments to approve", icon: "card", badge: "paymentsToApprove" },
     { href: "/admin/disputes", label: "Disputes", icon: "scales", badge: "disputes" },
     { href: "/admin/bookings", label: "Bookings", icon: "calendar" },
     { href: "/admin/payouts", label: "Payouts", icon: "wallet" },

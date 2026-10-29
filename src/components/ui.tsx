@@ -119,17 +119,20 @@ export function Badge({ tone = "neutral", children }: { tone?: Tone; children: R
 }
 
 const bookingTone: Record<string, [Tone, string]> = {
-  REQUESTED: ["warn", "Awaiting sitter"],
+  REQUESTED: ["warn", "Waiting for sitter"],
   ACCEPTED: ["accent", "Confirmed"],
+  AWAITING_CONFIRMATION: ["warn", "Waiting for parent"],
+  AWAITING_PAYMENT: ["info", "Payment approval"],
   DECLINED: ["neutral", "Declined"],
   EXPIRED: ["neutral", "Expired"],
   CANCELLED: ["neutral", "Cancelled"],
   COMPLETED: ["info", "Completed"],
-  DISPUTED: ["danger", "Under review"],
+  DISPUTED: ["danger", "Dispute"],
 };
 
 export function BookingStatus({ status, ended }: { status: string; ended?: boolean }) {
-  if (status === "ACCEPTED" && ended) return <Badge tone="warn">Awaiting confirmation</Badge>;
+  // Accepted and already over, but the sitter hasn't marked it done yet.
+  if (status === "ACCEPTED" && ended) return <Badge tone="warn">Waiting to be marked done</Badge>;
   const [tone, label] = bookingTone[status] ?? ["neutral", status];
   return <Badge tone={tone}>{label}</Badge>;
 }

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { refundPayment, resolveDispute } from "@/lib/bookings";
+import { approvePayment, refundPayment, resolveDispute } from "@/lib/bookings";
 import { audit, notify } from "@/lib/notify";
 import { formatMoney } from "@/lib/format";
 import type { FormState } from "./auth";
@@ -65,6 +65,15 @@ export async function resolveDisputeAction(_: FormState, form: FormData): Promis
   revalidatePath("/admin/disputes");
   revalidatePath("/admin");
   return r.ok ? { ok: true, message: "Dispute resolved." } : { error: r.error };
+}
+
+export async function approvePaymentAction(_: FormState, form: FormData): Promise<FormState> {
+  const admin = await requireUser(["ADMIN"]);
+  const id = String(form.get("bookingId") ?? "");
+  const r = await approvePayment(admin, id);
+  revalidatePath("/admin", "layout");
+  revalidatePath(`/bookings/${id}`);
+  return r.ok ? { ok: true, message: "Payment approved. The card was charged and the payout is queued." } : { error: r.error };
 }
 
 export async function refundAction(_: FormState, form: FormData): Promise<FormState> {

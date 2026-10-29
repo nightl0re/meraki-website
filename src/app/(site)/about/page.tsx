@@ -20,7 +20,7 @@ const STEPS = [
   { icon: Briefcase, title: "Or post a job", body: "Tell us when you need help and your budget. Sitters nearby are notified and apply with a message. You compare them side by side and hire in one click." },
   { icon: CalendarCheck, title: "Request a time", body: `Pick a slot inside the sitter's availability and choose which children they'll look after. They have ${config.sitterResponseHours} hours to accept.` },
   { icon: ChatCircleText, title: "Plan the details", body: "Message your sitter about routines, allergies and directions. Your address and phone number are only shared once they accept." },
-  { icon: CreditCard, title: "Pay after the job", body: `Your card is held, not charged, when you book. After the job you confirm it went well and we charge it. Something wrong? Report it within ${config.autoConfirmHours} hours.` },
+  { icon: CreditCard, title: "Pay after the job", body: `Your card is held, not charged, when you book. After the job your sitter marks it completed, you confirm it went well, and Meraki approves the payment. Only then is your card charged. Something wrong? Report it before the payment is approved.` },
 ];
 
 const TRUST = [
@@ -39,7 +39,7 @@ const WHY = [
 
 const FAQ = [
   { q: "How much does Meraki cost?", a: `Joining is free. When you book, you pay the sitter's hourly rate plus a ${Math.round(config.serviceFeeRate * 100)}% service fee (minimum ${formatMoney(config.serviceFeeMinCents)}). There's no subscription.` },
-  { q: "When is my card charged?", a: `Only after the job. We place a hold when you book. You're charged when you confirm, or automatically ${config.autoConfirmHours} hours after the job if you don't respond.` },
+  { q: "When is my card charged?", a: `Only after the job. We place a hold when you book. After your sitter marks the job completed you confirm it (or it's confirmed automatically after ${config.autoConfirmHours} hours), and the charge happens when Meraki approves the payment.` },
   { q: "How can I pay?", a: "This demo accepts cards (payments are simulated). For the Malaysia launch we plan to add FPX online banking, Touch 'n Go eWallet and GrabPay through the same payment step." },
   { q: "What if I need to cancel?", a: `Cancelling is free until ${config.freeCancelHours} hours before the start. After that, ${Math.round(config.lateCancelFeeRate * 100)}% of the sitter's pay is charged and goes to the sitter, who kept that time free for you.` },
   { q: "What if something goes wrong?", a: "Use “Report a problem” on the booking. The payment is paused and our team contacts you and the sitter, usually within one business day, and decides on a full or partial refund." },

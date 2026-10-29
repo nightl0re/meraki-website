@@ -24,9 +24,16 @@ export const config = {
   freeCancelHours: 24,
   lateCancelFeeRate: 0.5,
 
-  // After a job ends the parent has this long to confirm or report a problem;
-  // after that it is confirmed automatically and the card is charged.
+  // After the sitter marks a job completed, the parent has this long to
+  // confirm or report a problem; after that it counts as confirmed and goes
+  // to an admin for payment approval. The card is only charged on approval.
   autoConfirmHours: 48,
+
+  // Normally a sitter can mark a job completed only once it has started.
+  // While testing the flow (bookings in the future), set
+  // ALLOW_EARLY_COMPLETION=1 to allow it straight after accepting.
+  // Parents and admins still have to confirm, so nobody is paid by mistake.
+  allowEarlyCompletion: process.env.ALLOW_EARLY_COMPLETION === "1",
 
   minRateCents: 1000,
   maxRateCents: 10000,

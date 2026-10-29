@@ -281,39 +281,44 @@ model Availability {
 
 enum BookingStatus {
   REQUESTED // waiting for the sitter; card is authorized (held)
-  ACCEPTED // sitter said yes; job upcoming or awaiting parent confirmation
+  ACCEPTED // sitter said yes; job upcoming or in progress
+  AWAITING_CONFIRMATION // sitter marked the job completed; waiting for the parent
+  AWAITING_PAYMENT // parent confirmed; waiting for an admin to approve the payment
   DECLINED
   EXPIRED // sitter never answered
   CANCELLED
-  COMPLETED // parent confirmed (or auto-confirmed); payment captured
+  COMPLETED // admin approved; payment captured, sitter payout queued
   DISPUTED // parent reported a problem; admin decides
 }
 
 model Booking {
-  id              String        @id @default(cuid())
-  code            String        @unique @db.VarChar(12) // short human reference, e.g. MK-7Q2F9C
-  parentId        String
-  sitterId        String
-  startsAt        DateTime
-  endsAt          DateTime
-  childrenCount   Int
-  address         String        @db.VarChar(200)
-  notes           String        @default("") @db.VarChar(2000)
-  status          BookingStatus @default(REQUESTED)
-  hourlyRateCents Int
-  hours           Decimal       @db.Decimal(4, 2)
-  subtotalCents   Int
-  serviceFeeCents Int
-  totalCents      Int
-  respondBy       DateTime
-  respondedAt     DateTime?
-  confirmedAt     DateTime?
-  cancelledAt     DateTime?
-  cancelledById   String?
-  cancelReason    String        @default("") @db.VarChar(300)
-  disputeReason   String        @default("") @db.VarChar(2000)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id                  String        @id @default(cuid())
+  code                String        @unique @db.VarChar(12) // short human reference, e.g. MK-7Q2F9C
+  parentId            String
+  sitterId            String
+  startsAt            DateTime
+  endsAt              DateTime
+  childrenCount       Int
+  address             String        @db.VarChar(200)
+  notes               String        @default("") @db.VarChar(2000)
+  status              BookingStatus @default(REQUESTED)
+  hourlyRateCents     Int
+  hours               Decimal       @db.Decimal(4, 2)
+  subtotalCents       Int
+  serviceFeeCents     Int
+  totalCents          Int
+  respondBy           DateTime
+  respondedAt         DateTime?
+  sitterDoneAt        DateTime? // sitter marked the job completed
+  confirmedAt         DateTime? // parent confirmed it went well
+  paymentApprovedAt   DateTime? // admin approved the payment (card charged)
+  paymentApprovedById String?
+  cancelledAt         DateTime?
+  cancelledById       String?
+  cancelReason        String        @default("") @db.VarChar(300)
+  disputeReason       String        @default("") @db.VarChar(2000)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
 
   parent   User           @relation("ParentBookings", fields: [parentId], references: [id])
   sitter   User           @relation("SitterBookings", fields: [sitterId], references: [id])

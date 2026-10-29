@@ -9,7 +9,15 @@ import { BookingStatus, Card, Input, PageHeader, Select, buttonClass } from "@/c
 
 export const metadata: Metadata = { title: "All bookings" };
 
-const STATUSES: Status[] = ["REQUESTED", "ACCEPTED", "COMPLETED", "DISPUTED", "CANCELLED", "DECLINED", "EXPIRED"];
+// In the order a booking moves through them.
+const STATUSES: Status[] = [
+  "REQUESTED", "ACCEPTED", "AWAITING_CONFIRMATION", "AWAITING_PAYMENT", "COMPLETED", "DISPUTED", "CANCELLED", "DECLINED", "EXPIRED",
+];
+const LABELS: Record<Status, string> = {
+  REQUESTED: "Waiting for sitter", ACCEPTED: "Accepted", AWAITING_CONFIRMATION: "Waiting for parent",
+  AWAITING_PAYMENT: "Payment approval", COMPLETED: "Completed", DISPUTED: "Disputes", CANCELLED: "Cancelled",
+  DECLINED: "Declined", EXPIRED: "Expired",
+};
 
 export default async function AdminBookingsPage({ searchParams }: PageProps<"/admin/bookings">) {
   await requireUser(["ADMIN"]);
@@ -27,6 +35,9 @@ export default async function AdminBookingsPage({ searchParams }: PageProps<"/ad
     ];
   }
 
+  const counts = await db.booking.groupBy({ by: ["status"], _count: true });
+  const countOf = (s: Status) => counts.find((c) => c.status === s)?._count ?? 0;
+
   const bookings = await db.booking.findMany({
     where,
     orderBy: { startsAt: "desc" },
@@ -40,14 +51,22 @@ export default async function AdminBookingsPage({ searchParams }: PageProps<"/ad
 
   return (
     <>
-      <PageHeader title="Bookings" />
+      <PageHeader title="Bookings" description="Every booking on Meraki and where it is in the flow: booked, accepted, marked completed, confirmed, payment approved." />
+      <nav aria-label="Booking stages" className="mb-5 flex flex-wrap gap-2">
+        <Link href="/admin/bookings" className={chip(!status)}>All <span className="tabular text-ink-3">{counts.reduce((n, c) => n + c._count, 0)}</span></Link>
+        {STATUSES.map((s) => (
+          <Link key={s} href={`/admin/bookings?status=${s}`} className={chip(status === s)}>
+            {LABELS[s]} <span className="tabular text-ink-3">{countOf(s)}</span>
+          </Link>
+        ))}
+      </nav>
       <form method="get" className="mb-4 flex flex-wrap gap-2">
         <label htmlFor="q" className="sr-only">Search</label>
         <Input id="q" name="q" defaultValue={q} placeholder="Code, name or email" className="h-10 max-w-xs" />
         <label htmlFor="status" className="sr-only">Status</label>
         <Select id="status" name="status" defaultValue={status ?? ""} className="h-10 w-44">
           <option value="">All statuses</option>
-          {STATUSES.map((s) => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
+          {STATUSES.map((s) => <option key={s} value={s}>{LABELS[s]}</option>)}
         </Select>
         <button className={buttonClass("secondary")}>Filter</button>
       </form>
@@ -92,4 +111,10 @@ export default async function AdminBookingsPage({ searchParams }: PageProps<"/ad
       </Card>
     </>
   );
+}
+
+function chip(active: boolean) {
+  return active
+    ? "inline-flex h-9 items-center gap-1.5 rounded-full border border-accent bg-accent-soft px-3.5 text-sm font-semibold text-accent-strong"
+    : "inline-flex h-9 items-center gap-1.5 rounded-full border border-line-strong bg-surface px-3.5 text-sm hover:border-ink-3";
 }

@@ -14,13 +14,13 @@ export default async function AdminOverview() {
   const p = zonedParts(now);
   const monthStart = zonedToUtc(`${p.year}-${String(p.month).padStart(2, "0")}-01`, "00:00")!;
 
-  const [captured, bookingsMonth, pendingSitters, disputes, pendingPayouts, parents, sitters, log, byMonth] = await Promise.all([
+  const [captured, bookingsMonth, pendingSitters, disputes, pendingPayouts, parents, sitters, log, byMonth, toApprove] = await Promise.all([
     db.payment.aggregate({
       where: { capturedAt: { gte: monthStart } },
       _sum: { capturedCents: true, refundedCents: true },
     }),
     db.booking.groupBy({ by: ["status"], where: { createdAt: { gte: monthStart } }, _count: true }),
-    db.user.count({ where: { role: "SITTER", status: "PENDING_REVIEW" } }),
+    db.user.count({ where: { role: "SITTER", status: "PENDING_REVIEW", sitterProfile: { submittedAt: { not: null } } } }),
     db.booking.count({ where: { status: "DISPUTED" } }),
     db.payout.aggregate({ where: { status: "PENDING" }, _sum: { amountCents: true } }),
     db.user.count({ where: { role: "PARENT" } }),
@@ -30,6 +30,7 @@ export default async function AdminOverview() {
       where: { capturedAt: { gte: new Date(now.getTime() - 183 * 86_400_000) } },
       select: { capturedAt: true, capturedCents: true, refundedCents: true, booking: { select: { status: true, totalCents: true, serviceFeeCents: true } } },
     }),
+    db.booking.aggregate({ where: { status: "AWAITING_PAYMENT" }, _count: true, _sum: { totalCents: true } }),
   ]);
 
   const gmv = (captured._sum.capturedCents ?? 0) - (captured._sum.refundedCents ?? 0);
@@ -57,8 +58,14 @@ export default async function AdminOverview() {
         <Stat label="Parents / active sitters" value={`${parents} / ${sitters}`} />
       </dl>
 
-      {(pendingSitters > 0 || disputes > 0) && (
-        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {(pendingSitters > 0 || disputes > 0 || toApprove._count > 0) && (
+        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {toApprove._count > 0 && (
+            <Link href="/admin/payments" className="rounded-2xl border border-info/25 bg-info-soft p-5 hover:border-info/50">
+              <p className="text-2xl font-bold text-info tabular">{toApprove._count}</p>
+              <p className="text-sm text-ink-2">{toApprove._count === 1 ? "payment" : "payments"} ready to approve ({formatMoney(toApprove._sum.totalCents ?? 0)})</p>
+            </Link>
+          )}
           {pendingSitters > 0 && (
             <Link href="/admin/sitters" className="rounded-2xl border border-warn/25 bg-warn-soft p-5 hover:border-warn/50">
               <p className="text-2xl font-bold text-warn tabular">{pendingSitters}</p>

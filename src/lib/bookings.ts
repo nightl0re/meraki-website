@@ -13,15 +13,18 @@ import type { CurrentUser } from "./auth";
 // ---------------------------------------------------------------------------
 // Booking lifecycle. Every state change goes through this file.
 //
-//   REQUESTED --sitter accepts--> ACCEPTED --parent confirms / auto 48h--> COMPLETED
-//       |                            |  \--parent reports problem--> DISPUTED --admin--> COMPLETED / CANCELLED
-//       |-- sitter declines --> DECLINED (hold released)
-//       |-- no answer in 24h --> EXPIRED (hold released)
-//       \-- cancelled --> CANCELLED (free, or late fee if < 24h before start)
+//   1. parent books          REQUESTED              card AUTHORIZED (held, not charged)
+//   2. sitter accepts        ACCEPTED
+//   3. sitter marks done     AWAITING_CONFIRMATION
+//   4. parent confirms       AWAITING_PAYMENT       (or automatically after 48 h)
+//   5. admin approves        COMPLETED              card CAPTURED, sitter payout queued
 //
-// Money: the parent's card is AUTHORIZED when they request. It is only
-// CAPTURED when the job is confirmed (or for a late-cancellation fee), and a
-// Payout row is created for the sitter at that moment.
+//   From ACCEPTED, AWAITING_CONFIRMATION or AWAITING_PAYMENT the parent can
+//   report a problem -> DISPUTED -> admin refunds 0-100% -> COMPLETED/CANCELLED.
+//   REQUESTED -> DECLINED / EXPIRED (hold released).
+//   REQUESTED / ACCEPTED -> CANCELLED (free, or 50% late fee < 24 h before start).
+//
+// Money only moves on admin approval, dispute resolution or a late fee.
 // ---------------------------------------------------------------------------
 
 export type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
@@ -375,48 +378,106 @@ export async function cancelBooking(user: CurrentUser, id: string, reason: strin
 
 // --- after the job ------------------------------------------------------------
 
-async function complete(tx: Prisma.TransactionClient, b: BookingWithPayment, actorId: string | null) {
-  await transition(tx, b.id, ["ACCEPTED", "DISPUTED"], { status: "COMPLETED", confirmedAt: new Date() });
-  await charge(tx, b, b.totalCents, b.subtotalCents);
-  await tx.sitterProfile.update({ where: { userId: b.sitterId }, data: { completedJobs: { increment: 1 } } });
-  await notify(
-    b.sitterId, "Job confirmed",
-    `Booking ${b.code} is complete. ${formatMoney(b.subtotalCents)} is on its way to you.`,
-    `/sitter/earnings`, tx,
-  );
-  await notify(b.parentId, "Receipt ready", `You were charged ${formatMoney(b.totalCents)} for ${b.code}.`, `/bookings/${b.id}/receipt`, tx);
-  await audit(actorId, "booking.completed", "Booking", b.id, "", tx);
+async function notifyAdmins(tx: Prisma.TransactionClient, title: string, body: string, href: string) {
+  const admins = await tx.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
+  for (const a of admins) await notify(a.id, title, body, href, tx);
 }
 
+export function canMarkDone(b: Pick<Booking, "status" | "startsAt">, now = new Date()) {
+  return b.status === "ACCEPTED" && (config.allowEarlyCompletion || b.startsAt <= now);
+}
+
+// Step 3: the sitter says the job is done.
+export async function markJobDone(sitter: CurrentUser, id: string): Promise<Result> {
+  return guarded(async () => {
+    const b = await load(id);
+    if (!b || b.sitterId !== sitter.id) return fail("Booking not found.");
+    if (b.status !== "ACCEPTED") return fail("This booking can't be marked as completed.");
+    if (!canMarkDone(b)) return fail("You can mark the job completed once it has started.");
+    await db.$transaction(async (tx) => {
+      await transition(tx, id, ["ACCEPTED"], { status: "AWAITING_CONFIRMATION", sitterDoneAt: new Date() });
+      await notify(
+        b.parentId, "Please confirm the job",
+        `${sitter.firstName} marked ${b.code} as completed. Confirm it went well, or report a problem.`,
+        `/bookings/${id}`, tx,
+      );
+      await audit(sitter.id, "booking.sitter_done", "Booking", id, "", tx);
+    });
+    return { ok: true };
+  });
+}
+
+// Step 4: the parent confirms. Allowed after the sitter marked it done, or
+// once the booking has ended if the sitter forgot.
 export async function confirmCompletion(parent: CurrentUser, id: string): Promise<Result> {
   return guarded(async () => {
     const b = await load(id);
     if (!b || b.parentId !== parent.id) return fail("Booking not found.");
-    if (b.status !== "ACCEPTED") return fail("This booking can't be confirmed.");
-    if (b.endsAt > new Date()) return fail("You can confirm once the booking has ended.");
-    await db.$transaction((tx) => complete(tx, b, parent.id));
+    const ended = b.endsAt <= new Date();
+    if (!(b.status === "AWAITING_CONFIRMATION" || (b.status === "ACCEPTED" && ended))) {
+      return fail(b.status === "ACCEPTED" ? "You can confirm once your sitter marks the job completed." : "This booking can't be confirmed.");
+    }
+    await db.$transaction(async (tx) => {
+      await transition(tx, id, ["AWAITING_CONFIRMATION", "ACCEPTED"], { status: "AWAITING_PAYMENT", confirmedAt: new Date() });
+      await notify(b.sitterId, "Job confirmed by the family", `${parent.firstName} confirmed ${b.code}. Meraki will approve your payment shortly.`, `/bookings/${id}`, tx);
+      await notifyAdmins(tx, "Payment to approve", `${b.code}: the family confirmed the job (${formatMoney(b.totalCents)}).`, "/admin/payments");
+      await audit(parent.id, "booking.parent_confirmed", "Booking", id, "", tx);
+    });
     return { ok: true };
   });
+}
+
+const DISPUTABLE = ["ACCEPTED", "AWAITING_CONFIRMATION", "AWAITING_PAYMENT"] as const;
+
+export function canReportProblem(b: Pick<Booking, "status" | "startsAt">, now = new Date()) {
+  if (b.status === "AWAITING_CONFIRMATION" || b.status === "AWAITING_PAYMENT") return true;
+  return b.status === "ACCEPTED" && (config.allowEarlyCompletion || b.startsAt <= now);
 }
 
 export async function reportProblem(parent: CurrentUser, id: string, reason: string): Promise<Result> {
   return guarded(async () => {
     const b = await load(id);
     if (!b || b.parentId !== parent.id) return fail("Booking not found.");
-    if (b.status !== "ACCEPTED" || b.startsAt > new Date()) return fail("You can report a problem once the booking has started.");
+    if (!canReportProblem(b)) return fail("You can report a problem once the booking has started.");
     if (reason.trim().length < 10) return fail("Please describe what happened (at least 10 characters).");
     await db.$transaction(async (tx) => {
-      await transition(tx, id, ["ACCEPTED"], { status: "DISPUTED", disputeReason: reason.slice(0, 2000) });
+      await transition(tx, id, [...DISPUTABLE], { status: "DISPUTED", disputeReason: reason.slice(0, 2000) });
       await notify(b.sitterId, "A problem was reported", `${parent.firstName} reported an issue with ${b.code}. Our team will be in touch.`, `/bookings/${id}`, tx);
-      const admins = await tx.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
-      for (const a of admins) await notify(a.id, "New dispute", `Booking ${b.code} needs a decision.`, `/admin/disputes`, tx);
+      await notifyAdmins(tx, "New dispute", `Booking ${b.code} needs a decision.`, "/admin/disputes");
       await audit(parent.id, "booking.disputed", "Booking", id, reason, tx);
     });
     return { ok: true };
   });
 }
 
+// Step 5 (and dispute release): charge the card in full and queue the payout.
+async function complete(tx: Prisma.TransactionClient, b: BookingWithPayment, admin: CurrentUser) {
+  await transition(tx, b.id, ["AWAITING_PAYMENT", "DISPUTED"], {
+    status: "COMPLETED", paymentApprovedAt: new Date(), paymentApprovedById: admin.id,
+  });
+  await charge(tx, b, b.totalCents, b.subtotalCents);
+  await tx.sitterProfile.update({ where: { userId: b.sitterId }, data: { completedJobs: { increment: 1 } } });
+  await notify(
+    b.sitterId, "Payment approved",
+    `Booking ${b.code} is complete. ${formatMoney(b.subtotalCents)} is in your next payout.`,
+    `/sitter/earnings`, tx,
+  );
+  await notify(b.parentId, "Receipt ready", `You were charged ${formatMoney(b.totalCents)} for ${b.code}.`, `/bookings/${b.id}/receipt`, tx);
+  await audit(admin.id, "payment.approved", "Booking", b.id, formatMoney(b.totalCents), tx);
+}
+
 // --- admin -------------------------------------------------------------------
+
+export async function approvePayment(admin: CurrentUser, id: string): Promise<Result> {
+  return guarded(async () => {
+    const b = await load(id);
+    if (!b) return fail("Booking not found.");
+    if (b.status !== "AWAITING_PAYMENT") return fail("This payment isn't waiting for approval.");
+    if (b.payment?.status !== "AUTHORIZED") return fail("There's no card hold to charge for this booking.");
+    await db.$transaction((tx) => complete(tx, b, admin));
+    return { ok: true };
+  });
+}
 
 // refundCents = how much of the total the parent gets back (0 = release in full).
 export async function resolveDispute(admin: CurrentUser, id: string, refundCents: number, note: string): Promise<Result> {
@@ -429,11 +490,11 @@ export async function resolveDispute(admin: CurrentUser, id: string, refundCents
         await transition(tx, id, ["DISPUTED"], { status: "CANCELLED", cancelledAt: new Date(), cancelledById: admin.id, cancelReason: note || "Refunded after dispute" });
         await releaseHold(tx, b.payment);
       } else if (refund === 0) {
-        await complete(tx, b, admin.id);
+        await complete(tx, b, admin);
       } else {
         const chargeCents = b.totalCents - refund;
         const payout = Math.round((b.subtotalCents * chargeCents) / b.totalCents);
-        await transition(tx, id, ["DISPUTED"], { status: "COMPLETED", confirmedAt: new Date() });
+        await transition(tx, id, ["DISPUTED"], { status: "COMPLETED", paymentApprovedAt: new Date(), paymentApprovedById: admin.id });
         await charge(tx, b, chargeCents, payout);
       }
       const msg = refund === 0
@@ -473,7 +534,8 @@ export async function refundPayment(admin: CurrentUser, bookingId: string, cents
 
 // --- time-based transitions ----------------------------------------------------
 
-// Expires unanswered requests and auto-confirms finished jobs. Runs on page
+// Expires unanswered requests and confirms jobs the parent didn't answer
+// about (they then wait for admin approval; nothing is charged here). Runs on page
 // loads (cheap: it only touches rows that are due). In production, also call
 // it from a cron hitting /api/cron.
 let lastSweep = 0;
@@ -499,12 +561,16 @@ export async function sweep(force = false) {
   }
 
   const due = await db.booking.findMany({
-    where: { status: "ACCEPTED", endsAt: { lt: new Date(now.getTime() - config.autoConfirmHours * HOUR) } },
-    include: { payment: true },
+    where: { status: "AWAITING_CONFIRMATION", sitterDoneAt: { lt: new Date(now.getTime() - config.autoConfirmHours * HOUR) } },
     take: 100,
   });
   for (const b of due) {
-    await db.$transaction((tx) => complete(tx, b, null)).catch(ignoreStale);
+    await db.$transaction(async (tx) => {
+      await transition(tx, b.id, ["AWAITING_CONFIRMATION"], { status: "AWAITING_PAYMENT", confirmedAt: new Date() });
+      await notify(b.parentId, "Job confirmed automatically", `We didn't hear back about ${b.code}, so it was confirmed. Meraki will now approve the payment.`, `/bookings/${b.id}`, tx);
+      await notifyAdmins(tx, "Payment to approve", `${b.code} was confirmed automatically after ${config.autoConfirmHours} hours.`, "/admin/payments");
+      await audit(null, "booking.auto_confirmed", "Booking", b.id, "", tx);
+    }).catch(ignoreStale);
   }
 }
 

@@ -7,7 +7,7 @@ import { formatDate, formatMoney, formatShortDate, formatTime, formatTimeRange, 
 import { jobsNear } from "@/lib/jobs";
 import { zonedParts, zonedToUtc } from "@/lib/time";
 import { setAccepting } from "@/app/actions/sitter";
-import { acceptAction, declineAction } from "@/app/actions/bookings";
+import { acceptAction, declineAction, markDoneAction } from "@/app/actions/bookings";
 import { ActionForm } from "@/components/action-form";
 import { JobCard } from "@/components/job-card";
 import { MonthCalendar, NotificationsPanel, Panel, PanelLink, StatTile } from "@/components/dashboard-parts";
@@ -25,7 +25,7 @@ export default async function SitterHome() {
   const monthEnd = zonedToUtc(`${nextMonth}-01`, "00:00")!;
   const parentSelect = { select: { firstName: true, lastName: true, avatarUrl: true } };
 
-  const [me, requests, upcoming, monthBookings, earnedMonth, hours, totalBookings, availabilityCount, jobs] = await Promise.all([
+  const [me, requests, upcoming, monthBookings, earnedMonth, hours, totalBookings, availabilityCount, jobs, toFinish] = await Promise.all([
     db.user.findUniqueOrThrow({
       where: { id: user.id },
       select: { avatarUrl: true, phone: true, area: true, sitterProfile: { include: { _count: { select: { skills: true } } } } },
@@ -42,14 +42,20 @@ export default async function SitterHome() {
       include: { parent: parentSelect },
     }),
     db.booking.findMany({
-      where: { sitterId: user.id, status: { in: ["REQUESTED", "ACCEPTED", "COMPLETED"] }, startsAt: { gte: monthStart, lt: monthEnd } },
+      where: { sitterId: user.id, status: { in: ["REQUESTED", "ACCEPTED", "AWAITING_CONFIRMATION", "AWAITING_PAYMENT", "COMPLETED"] }, startsAt: { gte: monthStart, lt: monthEnd } },
       select: { id: true, startsAt: true, status: true, parent: { select: { lastName: true } } },
     }),
     db.payout.aggregate({ where: { sitterId: user.id, status: { not: "CANCELLED" }, createdAt: { gte: monthStart } }, _sum: { amountCents: true } }),
     db.booking.aggregate({ where: { sitterId: user.id, status: "COMPLETED" }, _sum: { hours: true } }),
-    db.booking.count({ where: { sitterId: user.id, status: { in: ["ACCEPTED", "COMPLETED"] } } }),
+    db.booking.count({ where: { sitterId: user.id, status: { in: ["ACCEPTED", "AWAITING_CONFIRMATION", "AWAITING_PAYMENT", "COMPLETED"] } } }),
     db.availability.count({ where: { sitterId: user.id } }),
     user.status === "ACTIVE" ? jobsNear(user.id, 3) : Promise.resolve([]),
+    // Accepted jobs that have started: the sitter should mark them completed.
+    db.booking.findMany({
+      where: { sitterId: user.id, status: "ACCEPTED", startsAt: { lte: now } },
+      orderBy: { startsAt: "asc" },
+      include: { parent: parentSelect },
+    }),
   ]);
   const p = me.sitterProfile!;
 
@@ -137,6 +143,26 @@ export default async function SitterHome() {
             </ul>
           )}
         </Panel>
+
+        {toFinish.length > 0 && (
+          <Panel title={`Jobs to mark completed (${toFinish.length})`}>
+            <ul className="space-y-3">
+              {toFinish.map((b) => (
+                <li key={b.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-brand/25 bg-accent-soft/40 p-4">
+                  <Avatar src={b.parent.avatarUrl} first={b.parent.firstName} last={b.parent.lastName} size={40} />
+                  <div className="min-w-0 flex-1">
+                    <Link href={`/bookings/${b.id}`} className="font-semibold hover:underline">{b.parent.lastName} family</Link>
+                    <p className="text-sm text-ink-3">{formatDate(b.startsAt)}, {formatTimeRange(b.startsAt, b.endsAt)}</p>
+                  </div>
+                  <p className="font-bold tabular">{formatMoney(b.subtotalCents)}</p>
+                  <ActionForm action={markDoneAction} hidden={{ bookingId: b.id }} label="Mark completed"
+                    confirm={{ title: "Mark this job as completed?", body: "The family will be asked to confirm. Then Meraki approves your payment.", confirmLabel: "Yes, it's completed" }}
+                    pendingText="Saving" />
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        )}
 
         <Panel title="My schedule" action={<PanelLink href="/bookings">All bookings</PanelLink>}>
           <div className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,300px)_1fr]">

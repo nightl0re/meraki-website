@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import {
-  acceptBooking, cancelBooking, confirmCompletion, declineBooking, reportProblem, sendMessage, submitReview,
+  acceptBooking, cancelBooking, confirmCompletion, declineBooking, markJobDone, reportProblem, sendMessage, submitReview,
   type Result,
 } from "@/lib/bookings";
 import type { FormState } from "./auth";
@@ -20,6 +20,7 @@ function done(id: string) {
   revalidatePath("/bookings");
   revalidatePath("/parent");
   revalidatePath("/sitter");
+  revalidatePath("/admin", "layout");
 }
 
 const field = (form: FormData, k: string) => String(form.get(k) ?? "");
@@ -48,12 +49,20 @@ export async function cancelAction(_: FormState, form: FormData): Promise<FormSt
   return toState(r);
 }
 
+export async function markDoneAction(_: FormState, form: FormData): Promise<FormState> {
+  const user = await requireUser(["SITTER"]);
+  const id = field(form, "bookingId");
+  const r = await markJobDone(user, id);
+  done(id);
+  return toState(r, "Marked as completed. The family will be asked to confirm.");
+}
+
 export async function confirmAction(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser(["PARENT"]);
   const id = field(form, "bookingId");
   const r = await confirmCompletion(user, id);
   done(id);
-  return toState(r, "Thanks! Your card has been charged and your receipt is ready.");
+  return toState(r, "Thanks for confirming! Meraki will approve the payment, then your card is charged.");
 }
 
 export async function reportAction(_: FormState, form: FormData): Promise<FormState> {

@@ -4,6 +4,7 @@ import { db } from "./db";
 import type { CurrentUser } from "./auth";
 import type { NavBadge } from "./nav";
 import { jobsNear } from "./jobs";
+import { adminPaymentsToApprove, parentNeedsAction, sitterNeedsAction } from "./booking-filters";
 
 // Counts shown as badges next to sidebar items. Cached per request.
 export const navCounts = cache(async (user: CurrentUser): Promise<Partial<Record<NavBadge, number>>> => {
@@ -12,7 +13,7 @@ export const navCounts = cache(async (user: CurrentUser): Promise<Partial<Record
   if (user.role === "PARENT") {
     const [n, action, applicants] = await Promise.all([
       notifications,
-      db.booking.count({ where: { parentId: user.id, status: "ACCEPTED", endsAt: { lte: now } } }),
+      db.booking.count({ where: parentNeedsAction(user.id, now) }),
       db.jobApplication.count({ where: { status: "APPLIED", job: { parentId: user.id, status: "OPEN" } } }),
     ]);
     return { notifications: n, bookingsAction: action, jobApplicants: applicants };
@@ -20,15 +21,16 @@ export const navCounts = cache(async (user: CurrentUser): Promise<Partial<Record
   if (user.role === "SITTER") {
     const [n, requests, jobs] = await Promise.all([
       notifications,
-      db.booking.count({ where: { sitterId: user.id, status: "REQUESTED" } }),
+      db.booking.count({ where: sitterNeedsAction(user.id, now) }),
       user.status === "ACTIVE" ? jobsNear(user.id).then((j) => j.filter((x) => !x.myApplication).length) : Promise.resolve(0),
     ]);
     return { notifications: n, requests, jobsNear: jobs };
   }
-  const [n, pendingSitters, disputes] = await Promise.all([
+  const [n, pendingSitters, disputes, paymentsToApprove] = await Promise.all([
     notifications,
-    db.user.count({ where: { role: "SITTER", status: "PENDING_REVIEW" } }),
+    db.user.count({ where: { role: "SITTER", status: "PENDING_REVIEW", sitterProfile: { submittedAt: { not: null } } } }),
     db.booking.count({ where: { status: "DISPUTED" } }),
+    db.booking.count({ where: adminPaymentsToApprove }),
   ]);
-  return { notifications: n, pendingSitters, disputes };
+  return { notifications: n, pendingSitters, disputes, paymentsToApprove };
 });

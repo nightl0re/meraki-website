@@ -34,16 +34,20 @@ This is the web rebuild of the original Meraki Windows Forms app. It keeps the b
 ## Booking and payment flow
 
 ```
-Parent requests ──► card AUTHORIZED (hold, not charged)
-   │
-   ├─ sitter declines / no answer in 24h ──► hold VOIDED (released)
-   ├─ cancelled > 24h before start ───────► hold VOIDED
-   ├─ parent cancels < 24h before ───────► 50% CAPTURED, paid to sitter
-   │
-   ▼ sitter accepts
-ACCEPTED ── job ends ──► parent confirms (or auto after 48h) ──► CAPTURED, payout queued
-                    └─► parent reports a problem ──► DISPUTED ──► admin refunds 0-100%
+1. Parent books            REQUESTED              card AUTHORIZED (hold, not charged)
+2. Sitter accepts          ACCEPTED
+3. Sitter marks completed  AWAITING_CONFIRMATION
+4. Parent confirms         AWAITING_PAYMENT       (automatic after 48 h without an answer)
+5. Admin approves payment  COMPLETED              card CAPTURED, sitter payout queued
+
+Parent reports a problem (from step 2 until step 5) ──► DISPUTED ──► admin refunds 0-100%
+Sitter declines / no answer in 24 h ──► hold released
+Cancelled > 24 h before start ──► hold released; < 24 h ──► 50% charged, paid to the sitter
 ```
+
+Every booking page shows these steps as a timeline with dates, for the parent, the sitter and admins. Admins approve payments under **Payments to approve**, and see every stage under **Bookings**.
+
+A sitter can mark a job completed once it has started. To try the whole flow right away with bookings in the future, set `ALLOW_EARLY_COMPLETION=1` (the parent and an admin still have to confirm, so nothing is paid by accident). Remove it before launch.
 
 All transitions live in [`src/lib/bookings.ts`](src/lib/bookings.ts). Each one only runs if the booking is still in the expected status, so double clicks and two tabs can't charge twice. A row lock stops two parents from booking the same slot. Money is stored as integer cents.
 

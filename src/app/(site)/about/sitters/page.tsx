@@ -19,7 +19,7 @@ const STEPS = [
   { icon: Bell, title: "Get requests", body: `Families near you book times inside your availability. You get a notification and have ${config.sitterResponseHours} hours to accept or decline.` },
   { icon: Briefcase, title: "Apply to jobs", body: "Families also post jobs. Browse the ones near you, apply with a short message, and if they hire you, the booking is confirmed instantly." },
   { icon: CalendarCheck, title: "Do the job", body: "See the family's address, phone and children's details once you accept. Message them in the app to plan." },
-  { icon: CurrencyDollar, title: "Get paid weekly", body: "When the family confirms the job, your full rate is added to your next weekly payout. No fees come out of your pay." },
+  { icon: CurrencyDollar, title: "Get paid weekly", body: "Mark the job completed when you finish. When the family confirms and Meraki approves the payment, your full rate is added to your next weekly payout. No fees come out of your pay." },
 ];
 
 const RULES = [
@@ -34,7 +34,7 @@ export default function AboutSittersPage() {
   const example = quote(2200, 240);
   const FAQ = [
     { q: "How much can I earn?", a: `You set your own hourly rate between ${formatMoney(config.minRateCents)} and ${formatMoney(config.maxRateCents)}. You keep 100% of it; families pay Meraki's service fee on top.` },
-    { q: "When do I get paid?", a: `After each job the family confirms (or it's confirmed automatically after ${config.autoConfirmHours} hours). Confirmed jobs are paid out every Monday.` },
+    { q: "When do I get paid?", a: `After each job you mark it completed, the family confirms (or it's confirmed automatically after ${config.autoConfirmHours} hours), and Meraki approves the payment. Approved jobs are paid out every Monday.` },
     { q: "What if a family cancels late?", a: `If they cancel less than ${config.freeCancelHours} hours before the start, you receive ${Math.round(config.lateCancelFeeRate * 100)}% of the booking's pay.` },
     { q: "What if there's a problem on the job?", a: "If a family reports a problem, the payment is paused and our team talks to both of you before deciding. You can share your side in the booking's messages." },
     { q: "Who can join?", a: "Anyone 18 or older with childcare experience and references. You'll need a phone number and a clear photo of yourself." },

@@ -124,7 +124,7 @@ export default async function Home() {
             { icon: MagnifyingGlass, title: "Search your area", body: "Enter your address or pick a neighborhood. You'll see sitters who travel to you, nearest first." },
             { icon: CalendarCheck, title: "Request a time", body: "Choose a slot inside their availability. Your card gets a temporary hold, not a charge." },
             { icon: ChatCircleText, title: "Plan the details", body: `Message your sitter about routines and allergies. They confirm within ${config.sitterResponseHours} hours or the hold is released.` },
-            { icon: CreditCard, title: "Pay after the job", body: `Confirm everything went well and we charge your card. Something wrong? Report it within ${config.autoConfirmHours} hours.` },
+            { icon: CreditCard, title: "Pay after the job", body: `Your sitter marks the job completed, you confirm it went well, and Meraki approves the payment before your card is charged. Something wrong? Report it.` },
           ].map((s, i) => (
             <Reveal key={s.title} delay={i * 0.05}>
               <li className="flex gap-5 rounded-2xl border border-line bg-surface p-6">

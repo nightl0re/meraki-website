@@ -6,8 +6,8 @@ import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { db } from "@/lib/db";
 import {
-  acceptBooking, cancelBooking, confirmCompletion, createBooking, declineBooking, reportProblem,
-  resolveDispute, sweep, type NewBooking,
+  acceptBooking, approvePayment, cancelBooking, confirmCompletion, createBooking, declineBooking, markJobDone,
+  reportProblem, resolveDispute, sweep, type NewBooking,
 } from "@/lib/bookings";
 import { payments } from "@/lib/payments/provider";
 import { toDateInput, zonedToUtc } from "@/lib/time";
@@ -154,35 +154,75 @@ describe("booking lifecycle", () => {
     assert.equal(payout.amountCents, 3000);
   });
 
-  test("parent confirms after the job: card charged, sitter paid their full rate", async () => {
+  test("full flow: sitter marks done, parent confirms, admin approves, then the card is charged", async () => {
     const r = await createBooking(parent, booking(slot(11)));
     assert.ok(r.ok);
     const id = r.data!.id;
     await acceptBooking(sitter, id);
-    // can't confirm before it ends
+
+    // Before the job starts nobody can complete it.
+    assert.equal((await markJobDone(sitter, id)).ok, false);
     assert.equal((await confirmCompletion(parent, id)).ok, false);
+
     await db.booking.update({ where: { id }, data: slot(-1) });
+    // Only the booking's own sitter can mark it done.
+    assert.equal((await markJobDone({ ...sitter, id: parent.id }, id)).ok, false);
+    assert.ok((await markJobDone(sitter, id)).ok);
+    assert.equal((await bookingOf(id)).status, "AWAITING_CONFIRMATION");
+    assert.equal((await paymentOf(id)).status, "AUTHORIZED");
+
+    // Admin can't approve before the parent confirms.
+    assert.equal((await approvePayment(admin, id)).ok, false);
+    assert.equal((await confirmCompletion(sitter, id)).ok, false); // not the parent
     assert.ok((await confirmCompletion(parent, id)).ok);
+    const confirmed = await bookingOf(id);
+    assert.equal(confirmed.status, "AWAITING_PAYMENT");
+    assert.ok(confirmed.sitterDoneAt && confirmed.confirmedAt);
+    assert.equal((await paymentOf(id)).status, "AUTHORIZED"); // still not charged
+
+    assert.ok((await approvePayment(admin, id)).ok);
+    const done = await bookingOf(id);
+    assert.equal(done.status, "COMPLETED");
+    assert.equal(done.paymentApprovedById, admin.id);
     const p = await paymentOf(id);
     assert.equal(p.status, "CAPTURED");
     assert.equal(p.capturedCents, 6600);
     assert.equal((await db.payout.findUniqueOrThrow({ where: { bookingId: id } })).amountCents, 6000);
-    // another user can't act on someone else's booking
-    assert.equal((await confirmCompletion(sitter, id)).ok, false);
+    // Approving twice doesn't charge twice.
+    assert.equal((await approvePayment(admin, id)).ok, false);
   });
 
-  test("unanswered requests expire and finished jobs auto-confirm", async () => {
+  test("unanswered requests expire; unconfirmed jobs go to admin approval after 48 h, uncharged", async () => {
     const req = await createBooking(parent, booking(slot(12)));
     const acc = await createBooking(parent, booking(slot(13)));
     assert.ok(req.ok && acc.ok);
     await acceptBooking(sitter, acc.data!.id);
     await db.booking.update({ where: { id: req.data!.id }, data: { respondBy: new Date(Date.now() - 1000) } });
-    await db.booking.update({ where: { id: acc.data!.id }, data: slot(-4) });
+    await db.booking.update({
+      where: { id: acc.data!.id },
+      data: { ...slot(-4), status: "AWAITING_CONFIRMATION", sitterDoneAt: new Date(Date.now() - 49 * HOUR) },
+    });
     await sweep(true);
     assert.equal((await bookingOf(req.data!.id)).status, "EXPIRED");
     assert.equal((await paymentOf(req.data!.id)).status, "VOIDED");
-    assert.equal((await bookingOf(acc.data!.id)).status, "COMPLETED");
-    assert.equal((await paymentOf(acc.data!.id)).status, "CAPTURED");
+    assert.equal((await bookingOf(acc.data!.id)).status, "AWAITING_PAYMENT");
+    assert.equal((await paymentOf(acc.data!.id)).status, "AUTHORIZED");
+  });
+
+  test("a problem can be reported after the parent confirmed, until the admin approves", async () => {
+    const r = await createBooking(parent, booking(slot(15)));
+    assert.ok(r.ok);
+    const id = r.data!.id;
+    await acceptBooking(sitter, id);
+    await db.booking.update({ where: { id }, data: slot(-1) });
+    await markJobDone(sitter, id);
+    await confirmCompletion(parent, id);
+    assert.ok((await reportProblem(parent, id, "The kids said the sitter left early.")).ok);
+    assert.equal((await bookingOf(id)).status, "DISPUTED");
+    assert.equal((await approvePayment(admin, id)).ok, false); // disputes go through resolveDispute
+    assert.ok((await resolveDispute(admin, id, 0, "Checked with both sides, paid in full")).ok);
+    assert.equal((await paymentOf(id)).capturedCents, 6600);
+    assert.equal((await bookingOf(id)).status, "COMPLETED");
   });
 
   test("dispute holds the money until an admin decides a partial refund", async () => {

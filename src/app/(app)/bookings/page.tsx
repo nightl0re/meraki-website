@@ -5,6 +5,7 @@ import { CalendarBlank } from "@phosphor-icons/react/ssr";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { BookingRow } from "@/components/booking-row";
+import { FINISHED, IN_PROGRESS_AFTER_JOB, UPCOMING, parentNeedsAction, sitterNeedsAction } from "@/lib/booking-filters";
 import { Card, EmptyState, LinkButton, PageHeader, cn } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Bookings" };
@@ -23,12 +24,10 @@ export default async function BookingsPage({ searchParams }: PageProps<"/booking
   const mine: Prisma.BookingWhereInput = user.role === "PARENT" ? { parentId: user.id } : { sitterId: user.id };
 
   const filters: Record<typeof tab, Prisma.BookingWhereInput> = {
-    upcoming: { status: { in: ["REQUESTED", "ACCEPTED"] }, endsAt: { gt: now } },
-    action:
-      user.role === "PARENT"
-        ? { status: "ACCEPTED", endsAt: { lte: now } }
-        : { status: "REQUESTED" },
-    past: { OR: [{ status: { in: ["COMPLETED", "CANCELLED", "DECLINED", "EXPIRED", "DISPUTED"] } }, { endsAt: { lte: now }, status: "ACCEPTED" }] },
+    upcoming: { status: UPCOMING, endsAt: { gt: now } },
+    action: user.role === "PARENT" ? parentNeedsAction(user.id, now) : sitterNeedsAction(user.id, now),
+    // Finished jobs, including ones still being confirmed or approved.
+    past: { OR: [{ status: { in: [...FINISHED, ...IN_PROGRESS_AFTER_JOB] } }, { endsAt: { lte: now }, status: "ACCEPTED" }] },
   };
 
   const [bookings, actionCount] = await Promise.all([

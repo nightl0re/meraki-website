@@ -7,11 +7,13 @@ import {
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { config } from "@/lib/config";
-import { cancellationTerms } from "@/lib/bookings";
+import { canMarkDone, canReportProblem, cancellationTerms } from "@/lib/bookings";
 import { childAge, formatLongDate, formatMoney, formatShortDate, formatTime, formatTimeRange, timeAgo } from "@/lib/format";
 import {
-  acceptAction, cancelAction, confirmAction, declineAction, messageAction, reportAction, reviewAction,
+  acceptAction, cancelAction, confirmAction, declineAction, markDoneAction, messageAction, reportAction, reviewAction,
 } from "@/app/actions/bookings";
+import { approvePaymentAction } from "@/app/actions/admin";
+import { BookingTimeline } from "@/components/booking-timeline";
 import { ActionForm, MessageForm, ReviewForm } from "@/components/action-form";
 import { Alert, Avatar, BookingStatus, Card, LinkButton, Rating, cn } from "@/components/ui";
 
@@ -51,9 +53,15 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
   const started = b.startsAt <= now;
   const ended = b.endsAt <= now;
   const other = isParent ? b.sitter : b.parent;
-  const confirmedSide = b.status === "ACCEPTED" || b.status === "COMPLETED" || b.status === "DISPUTED";
+  const confirmedSide = ["ACCEPTED", "AWAITING_CONFIRMATION", "AWAITING_PAYMENT", "COMPLETED", "DISPUTED"].includes(b.status);
+  const isAdmin = user.role === "ADMIN";
   const terms = cancellationTerms(b, now);
-  const autoConfirmAt = new Date(b.endsAt.getTime() + config.autoConfirmHours * 3_600_000);
+  const autoConfirmAt = new Date((b.sitterDoneAt ?? b.endsAt).getTime() + config.autoConfirmHours * 3_600_000);
+  const reportForm = (
+    <ActionForm action={reportAction} hidden={{ bookingId: b.id }} label="Report a problem" variant="secondary"
+      confirm={{ title: "Report a problem", body: "The payment is paused and a person from our team looks into it.", confirmLabel: "Send report" }}
+      reason={{ label: "What happened?", required: true }} pendingText="Sending" />
+  );
   const myReview = b.reviews.find((r) => r.authorId === user.id);
   const hidden = { bookingId: b.id };
 
@@ -92,53 +100,63 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
         <div className="min-w-0 space-y-8">
           {/* What happens next */}
           <NextStep>
+            {/* ---- parent ---- */}
             {isParent && b.status === "REQUESTED" && (
               <>
-                <StepText title={`Waiting for ${other.firstName} to respond`}>
-                  They have until {formatTime(b.respondBy)} on {formatShortDate(b.respondBy)}. If they don&apos;t answer, the hold is released automatically.
+                <StepText title={`Waiting for ${other.firstName} to accept`}>
+                  They have until {formatTime(b.respondBy)} on {formatShortDate(b.respondBy)}. If they don&apos;t answer, the hold on your card is released automatically.
                 </StepText>
                 <ActionForm action={cancelAction} hidden={hidden} label="Cancel request" variant="secondary"
                   confirm={{ title: "Cancel this request?", body: "The hold on your card is released straight away.", confirmLabel: "Cancel request" }}
                   reason={{ label: "Reason (optional)" }} pendingText="Cancelling" />
               </>
             )}
-            {isParent && b.status === "ACCEPTED" && !started && (
+            {isParent && b.status === "ACCEPTED" && (
               <>
-                <StepText title={`${other.firstName} will see you on ${formatShortDate(b.startsAt)}`}>
-                  {terms.late
-                    ? `It's less than ${config.freeCancelHours} hours to go, so cancelling now costs ${formatMoney(terms.feeCents)} (paid to your sitter).`
-                    : `Free cancellation until ${formatTime(new Date(b.startsAt.getTime() - config.freeCancelHours * 3_600_000))} on ${formatShortDate(new Date(b.startsAt.getTime() - config.freeCancelHours * 3_600_000))}.`}
-                </StepText>
-                <ActionForm action={cancelAction} hidden={hidden} label="Cancel booking" variant="danger"
-                  confirm={{
-                    title: "Cancel this booking?",
-                    body: terms.late ? `A late-cancellation fee of ${formatMoney(terms.feeCents)} will be charged.` : "You won't be charged anything.",
-                    confirmLabel: terms.late ? `Cancel and pay ${formatMoney(terms.feeCents)}` : "Cancel booking",
-                  }}
-                  reason={{ label: "Let your sitter know why (optional)" }} pendingText="Cancelling" />
-              </>
-            )}
-            {isParent && b.status === "ACCEPTED" && started && !ended && (
-              <>
-                <StepText title="Happening now">Your card will only be charged after you confirm the job went well.</StepText>
-                <ActionForm action={reportAction} hidden={hidden} label="Report a problem" variant="secondary"
-                  confirm={{ title: "Report a problem", body: "We'll pause the payment and a person from our team will look into it.", confirmLabel: "Send report" }}
-                  reason={{ label: "What happened?", required: true }} pendingText="Sending" />
-              </>
-            )}
-            {isParent && b.status === "ACCEPTED" && ended && (
-              <>
-                <StepText title="How did it go?">
-                  Confirm to pay {formatMoney(b.totalCents)}. If you don&apos;t respond, it&apos;s confirmed automatically on {formatShortDate(autoConfirmAt)} at {formatTime(autoConfirmAt)}.
+                <StepText title={started ? `Waiting for ${other.firstName} to mark the job completed` : `${other.firstName} accepted your booking`}>
+                  {started
+                    ? "Once they mark it completed, you'll be asked to confirm. Nothing is charged until then."
+                    : terms.late
+                      ? `It's less than ${config.freeCancelHours} hours to go, so cancelling now costs ${formatMoney(terms.feeCents)} (paid to your sitter).`
+                      : `Free cancellation until ${formatTime(new Date(b.startsAt.getTime() - config.freeCancelHours * 3_600_000))} on ${formatShortDate(new Date(b.startsAt.getTime() - config.freeCancelHours * 3_600_000))}.`}
                 </StepText>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                  <ActionForm action={confirmAction} hidden={hidden} label={`Confirm and pay ${formatMoney(b.totalCents)}`} pendingText="Charging card" />
-                  <ActionForm action={reportAction} hidden={hidden} label="Report a problem" variant="secondary"
-                    confirm={{ title: "Report a problem", body: "Your card won't be charged while our team reviews it.", confirmLabel: "Send report" }}
-                    reason={{ label: "What happened?", required: true }} pendingText="Sending" />
+                  {ended && <ActionForm action={confirmAction} hidden={hidden} label="Confirm the job went well" pendingText="Confirming" />}
+                  {!started && (
+                    <ActionForm action={cancelAction} hidden={hidden} label="Cancel booking" variant="danger"
+                      confirm={{
+                        title: "Cancel this booking?",
+                        body: terms.late ? `A late-cancellation fee of ${formatMoney(terms.feeCents)} will be charged.` : "You won't be charged anything.",
+                        confirmLabel: terms.late ? `Cancel and pay ${formatMoney(terms.feeCents)}` : "Cancel booking",
+                      }}
+                      reason={{ label: "Let your sitter know why (optional)" }} pendingText="Cancelling" />
+                  )}
+                  {canReportProblem(b, now) && reportForm}
                 </div>
               </>
             )}
+            {isParent && b.status === "AWAITING_CONFIRMATION" && (
+              <>
+                <StepText title={`${other.firstName} marked the job as completed`}>
+                  Did everything go well? Confirm, or report a problem. If you don&apos;t respond, it&apos;s confirmed automatically on {formatShortDate(autoConfirmAt)} at {formatTime(autoConfirmAt)}.
+                  Your card ({formatMoney(b.totalCents)}) is charged only after Meraki approves the payment.
+                </StepText>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                  <ActionForm action={confirmAction} hidden={hidden} label="Yes, confirm it went well" pendingText="Confirming" />
+                  {reportForm}
+                </div>
+              </>
+            )}
+            {isParent && b.status === "AWAITING_PAYMENT" && (
+              <>
+                <StepText title="Thanks for confirming">
+                  Meraki is approving the payment. Your card will then be charged {formatMoney(b.totalCents)} and your receipt will be ready.
+                </StepText>
+                {reportForm}
+              </>
+            )}
+
+            {/* ---- sitter ---- */}
             {isSitter && b.status === "REQUESTED" && (
               <>
                 <StepText title="New request">
@@ -152,35 +170,68 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
                 </div>
               </>
             )}
-            {isSitter && b.status === "ACCEPTED" && !started && (
+            {isSitter && b.status === "ACCEPTED" && (
               <>
-                <StepText title="You're booked">You&apos;ll earn {formatMoney(b.subtotalCents)} once the family confirms the job.</StepText>
-                <ActionForm action={cancelAction} hidden={hidden} label="Cancel booking" variant="danger"
-                  confirm={{ title: "Cancel this booking?", body: "Families rely on you. Frequent cancellations can lead to your profile being paused.", confirmLabel: "Cancel booking" }}
-                  reason={{ label: "Reason for the family", required: true }} pendingText="Cancelling" />
+                <StepText title={started ? (ended ? "Is the job done?" : "Happening now") : "You're booked"}>
+                  {canMarkDone(b, now)
+                    ? `When the job is finished, mark it completed. The family confirms, Meraki approves, and ${formatMoney(b.subtotalCents)} goes to your next payout.`
+                    : `You'll earn ${formatMoney(b.subtotalCents)}. You can mark the job completed once it has started.`}
+                </StepText>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                  {canMarkDone(b, now) && (
+                    <ActionForm action={markDoneAction} hidden={hidden} label="Mark job as completed"
+                      confirm={{ title: "Mark this job as completed?", body: ended ? "The family will be asked to confirm." : "This booking hasn't ended yet. Only mark it completed if the job is actually done.", confirmLabel: "Yes, it's completed" }}
+                      pendingText="Saving" />
+                  )}
+                  {!started && (
+                    <ActionForm action={cancelAction} hidden={hidden} label="Cancel booking" variant="danger"
+                      confirm={{ title: "Cancel this booking?", body: "Families rely on you. Frequent cancellations can lead to your profile being paused.", confirmLabel: "Cancel booking" }}
+                      reason={{ label: "Reason for the family", required: true }} pendingText="Cancelling" />
+                  )}
+                </div>
               </>
             )}
-            {isSitter && b.status === "ACCEPTED" && started && (
-              <StepText title={ended ? "Waiting for the family to confirm" : "Happening now"}>
-                {ended
-                  ? `Payment is released when they confirm, or automatically on ${formatShortDate(autoConfirmAt)}.`
-                  : `When the job ends, the family confirms and ${formatMoney(b.subtotalCents)} is added to your earnings.`}
+            {isSitter && b.status === "AWAITING_CONFIRMATION" && (
+              <StepText title="Waiting for the family to confirm">
+                You marked the job completed. If they don&apos;t respond, it&apos;s confirmed automatically on {formatShortDate(autoConfirmAt)}.
               </StepText>
             )}
-            {b.status === "DISPUTED" && (
+            {isSitter && b.status === "AWAITING_PAYMENT" && (
+              <StepText title="Confirmed by the family">
+                Meraki is approving the payment. Then {formatMoney(b.subtotalCents)} is added to your next payout.
+              </StepText>
+            )}
+
+            {/* ---- admin ---- */}
+            {isAdmin && !isParent && !isSitter && (
+              <StepText title="Admin">
+                {b.status === "AWAITING_PAYMENT"
+                  ? `Both sides are done: the sitter marked it completed and the family confirmed. Approving charges ${formatMoney(b.totalCents)} and queues ${formatMoney(b.subtotalCents)} for the sitter.`
+                  : b.status === "DISPUTED"
+                    ? "This booking is disputed. Decide the refund on the Disputes page."
+                    : "No admin action is needed at this stage."}
+              </StepText>
+            )}
+            {isAdmin && b.status === "AWAITING_PAYMENT" && (
+              <ActionForm action={approvePaymentAction} hidden={hidden} label={`Approve payment of ${formatMoney(b.totalCents)}`} pendingText="Charging card" />
+            )}
+            {isAdmin && b.status === "DISPUTED" && <LinkButton href="/admin/disputes" variant="secondary">Open disputes</LinkButton>}
+
+            {/* ---- everyone ---- */}
+            {b.status === "DISPUTED" && (isParent || isSitter) && (
               <StepText title="Under review">
                 {isParent ? "Thanks for telling us. No money has moved; our team will contact you both within one business day." : "The family reported a problem. Our team will contact you within one business day."}
                 {b.disputeReason && <span className="mt-2 block rounded-lg bg-surface-2 p-3 text-ink-2">“{b.disputeReason}”</span>}
               </StepText>
             )}
-            {b.status === "COMPLETED" && (
+            {b.status === "COMPLETED" && (isParent || isSitter) && (
               <StepText title="All done">
                 {isParent
                   ? `You were charged ${formatMoney(b.payment?.capturedCents ?? b.totalCents)}.`
                   : `${formatMoney(b.payout?.amountCents ?? b.subtotalCents)} ${b.payout?.status === "PAID" ? "was paid out to you" : "is in your next payout"}.`}
               </StepText>
             )}
-            {["DECLINED", "EXPIRED", "CANCELLED"].includes(b.status) && (
+            {["DECLINED", "EXPIRED", "CANCELLED"].includes(b.status) && (isParent || isSitter) && (
               <StepText title={b.status === "DECLINED" ? "Declined" : b.status === "EXPIRED" ? "Request expired" : "Cancelled"}>
                 {b.payment?.status === "CAPTURED"
                   ? `A late-cancellation fee of ${formatMoney(b.payment.capturedCents)} was charged.`
@@ -192,6 +243,11 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
               </StepText>
             )}
           </NextStep>
+
+          <Card className="p-6">
+            <h2 className="mb-4 font-semibold">Progress</h2>
+            <BookingTimeline b={b} />
+          </Card>
 
           {b.status === "COMPLETED" && (isParent || isSitter) && (
             <Card className="p-6">
@@ -264,13 +320,30 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
         </div>
 
         <aside className="space-y-6">
+          {isAdmin && !isParent && !isSitter && (
+            <Card className="space-y-4 p-6">
+              {[{ label: "Parent", u: b.parent }, { label: "Sitter", u: b.sitter }].map(({ label, u }) => (
+                <div key={label}>
+                  <p className="text-xs font-medium text-ink-3">{label}</p>
+                  <div className="mt-2 flex items-center gap-3">
+                    <Avatar src={u.avatarUrl} first={u.firstName} last={u.lastName} size={40} />
+                    <div>
+                      <p className="font-semibold">{u.firstName} {u.lastName}</p>
+                      <p className="text-sm text-ink-3">{u.phone || "No phone"}, {u.area}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </Card>
+          )}
+          {(isParent || isSitter) && (
           <Card className="p-6">
-            <p className="text-xs font-medium text-ink-3">{isParent ? "Your sitter" : isSitter ? "Family" : "Sitter"}</p>
+            <p className="text-xs font-medium text-ink-3">{isParent ? "Your sitter" : "Family"}</p>
             <div className="mt-3 flex items-center gap-3">
               <Avatar src={other.avatarUrl} first={other.firstName} last={other.lastName} size={48} />
               <div>
                 <p className="font-semibold">{other.firstName} {other.lastName}</p>
-                {isParent || user.role === "ADMIN"
+                {isParent
                   ? <Rating avg={b.sitter.sitterProfile?.ratingAvg ?? 0} count={b.sitter.sitterProfile?.ratingCount ?? 0} />
                   : <p className="text-sm text-ink-3">{b.parent.area}</p>}
               </div>
@@ -284,6 +357,7 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
               <Link href={`/sitters/${b.sitter.id}`} className="mt-3 inline-block text-sm text-ink-3 hover:text-ink">View profile</Link>
             )}
           </Card>
+          )}
 
           <Card className="p-6">
             <h2 className="font-semibold">{isSitter ? "Your earnings" : "Payment"}</h2>
