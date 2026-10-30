@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { approvePayment, refundPayment, resolveDispute } from "@/lib/bookings";
 import { audit, notify } from "@/lib/notify";
 import { formatMoney } from "@/lib/format";
+import { repairMissingLocation } from "@/lib/geo";
 import type { FormState } from "./auth";
 
 export async function reviewSitter(form: FormData) {
@@ -102,4 +103,14 @@ export async function runPayouts() {
   await audit(admin.id, "payouts.run", "Payout", "batch", `${pending.length} sitters`);
   revalidatePath("/admin/payouts");
   revalidatePath("/admin");
+}
+
+// Re-runs the location lookup for everyone without coordinates.
+export async function fixLocationsAction() {
+  const admin = await requireUser(["ADMIN"]);
+  const users = await db.user.findMany({ where: { latitude: null, area: { not: "" } }, select: { id: true }, take: 200 });
+  let fixed = 0;
+  for (const u of users) if (await repairMissingLocation(u.id)) fixed++;
+  await audit(admin.id, "users.locations_fixed", "User", "batch", `${fixed} of ${users.length}`);
+  revalidatePath("/admin/health");
 }

@@ -156,7 +156,8 @@ tests/                 booking flow tests
 ## Going to production
 
 - `/api/cron` expires unanswered requests, auto-confirms finished jobs and prunes expired sessions. On a paid plan, run it every few minutes.
-- Set `GEOCODER_USER_AGENT` with a contact email (OpenStreetMap's usage policy), or switch `geocode()` to a paid geocoder for higher volume.
+- Addresses are matched first against a built-in list of Klang Valley neighbourhoods and postcodes (`src/lib/places-my.ts`), which needs no network. Anything else goes to OpenStreetMap; set `GEOCODER_USER_AGENT` with a contact email (their usage policy), or switch `geocode()` to a paid geocoder for higher volume.
+- Admins can open **System check** (`/admin/health`) to see the settings in use, whether geocoding works from the server, and accounts without a map location (with a one-click fix).
 - Replace the simulated payment provider with a real one (see above).
 - Remove or change the demo and sample accounts (`prisma/seed.ts`, `prisma/sample-accounts.ts`) before real users arrive.
 - Connect an email provider in `src/lib/mail.ts` (Resend, Postmark, SES...) and set `APP_URL`. Until then, password reset emails are printed to the server console in development, and notifications are in-app.

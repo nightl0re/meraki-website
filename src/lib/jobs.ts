@@ -2,7 +2,7 @@ import "server-only";
 import { db } from "./db";
 import { config } from "./config";
 import { HOUR } from "./time";
-import { boundingBox, distanceKm } from "./geo";
+import { boundingBox, distanceKm, repairMissingLocation } from "./geo";
 import { createBooking, type Result } from "./bookings";
 import { notify, audit } from "./notify";
 import { formatDate, formatTime } from "./format";
@@ -39,8 +39,13 @@ export async function createJob(parent: CurrentUser, input: NewJob): Promise<Res
   const open = await db.job.count({ where: { parentId: parent.id, status: "OPEN" } });
   if (open >= 10) return fail("You have 10 open jobs. Close one before posting another.");
 
-  const me = await db.user.findUniqueOrThrow({ where: { id: parent.id }, select: { area: true, latitude: true, longitude: true } });
-  if (me.latitude == null || me.longitude == null) return fail("Add your neighborhood in Settings first, so nearby sitters can see the job.");
+  let me = await db.user.findUniqueOrThrow({ where: { id: parent.id }, select: { area: true, latitude: true, longitude: true } });
+  if (me.latitude == null && (await repairMissingLocation(parent.id))) {
+    me = await db.user.findUniqueOrThrow({ where: { id: parent.id }, select: { area: true, latitude: true, longitude: true } });
+  }
+  if (me.latitude == null || me.longitude == null) {
+    return fail("We couldn't place your home on the map. Set your neighbourhood or postcode in Settings (for example “Bangsar” or “59100”), then post the job.");
+  }
 
   const job = await db.job.create({
     data: {
@@ -169,6 +174,10 @@ export async function hireApplicant(
   if (app.status !== "APPLIED") return fail("This sitter withdrew or was already answered.");
   if (app.job.status !== "OPEN") return fail("This job is already filled or closed.");
   const job = app.job;
+  // If the job is for all of the family's children, attach them so the sitter
+  // sees names, ages and notes (allergies) once hired.
+  const kids = await db.child.findMany({ where: { parentId: parent.id }, select: { id: true } });
+  const childIds = kids.length === job.childrenCount ? kids.map((k) => k.id) : undefined;
   return createBooking(
     parent,
     {
@@ -179,6 +188,7 @@ export async function hireApplicant(
       address,
       notes: [job.title, job.description].filter(Boolean).join("\n\n"),
       paymentMethodId,
+      childIds,
     },
     { jobId: job.id, applicationId: app.id },
   );

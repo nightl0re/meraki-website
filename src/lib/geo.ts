@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "./db";
+import { lookupMalaysianPlace } from "./places-my";
 
 export type Point = { lat: number; lng: number };
 
@@ -36,25 +37,37 @@ export async function geocode(query: string): Promise<(Point & { label: string }
   if (key.length < 2) return null;
 
   const cached = await db.geocodeCache.findUnique({ where: { query: key } });
-  if (cached) {
-    return cached.latitude != null && cached.longitude != null
-      ? { lat: cached.latitude, lng: cached.longitude, label: cached.label }
-      : null;
+  if (cached?.latitude != null && cached.longitude != null) {
+    return { lat: cached.latitude, lng: cached.longitude, label: cached.label };
+  }
+
+  const country = process.env.GEOCODER_COUNTRY ?? "my"; // ISO country code(s), e.g. "my" or "my,sg"
+
+  // Built-in Klang Valley neighbourhoods and postcodes: no network needed, so
+  // this works even when the public geocoder blocks cloud servers.
+  if (country.split(",").includes("my")) {
+    const local = lookupMalaysianPlace(query);
+    if (local) return local;
   }
 
   // A neighborhood that sitters already use resolves without a network call.
   const area = await areaCentre(query);
   if (area) return area;
 
-  const country = process.env.GEOCODER_COUNTRY ?? "my"; // ISO country code(s), e.g. "my" or "my,sg"
+  if (cached) return null; // looked up before and not found
   const bias = country ? `&countrycodes=${country}` : "";
   const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1${bias}&q=${encodeURIComponent(query)}`;
   try {
     const res = await fetch(url, {
-      headers: { "User-Agent": process.env.GEOCODER_USER_AGENT ?? "Meraki/1.0 (babysitting marketplace)" },
+      // Nominatim's policy requires an identifying User-Agent; anonymous
+      // requests get HTTP 403.
+      headers: { "User-Agent": process.env.GEOCODER_USER_AGENT ?? `Meraki/1.0 (+${process.env.APP_URL ?? "https://github.com/nightl0re/meraki-website"})` },
       signal: AbortSignal.timeout(5000),
     });
-    if (!res.ok) return null; // don't cache server errors
+    if (!res.ok) {
+      console.warn(`[geocode] OpenStreetMap answered HTTP ${res.status} for "${query.slice(0, 60)}"`);
+      return null; // don't cache server errors
+    }
     const rows = (await res.json()) as { lat: string; lon: string; display_name: string }[];
     const hit = rows[0];
     const label = hit ? shortLabel(hit.display_name) : query;
@@ -69,7 +82,8 @@ export async function geocode(query: string): Promise<(Point & { label: string }
       },
     });
     return hit ? { lat: Number(hit.lat), lng: Number(hit.lon), label } : null;
-  } catch {
+  } catch (e) {
+    console.warn(`[geocode] lookup failed for "${query.slice(0, 60)}": ${(e as Error).message}`);
     return null; // offline or timed out: caller shows a friendly message
   }
 }
@@ -121,4 +135,16 @@ async function areaCentre(query: string) {
   });
   if (agg._avg.latitude == null || agg._avg.longitude == null) return null;
   return { lat: agg._avg.latitude, lng: agg._avg.longitude, label: name };
+}
+
+// Accounts created while the geocoder was unreachable have an area name but
+// no coordinates, which hides them from "near me" search and the job board.
+// Fill them in from the area text; safe to call often (one small query).
+export async function repairMissingLocation(userId: string) {
+  const u = await db.user.findUnique({ where: { id: userId }, select: { area: true, city: true, latitude: true } });
+  if (!u || u.latitude != null || !u.area.trim()) return false;
+  const place = await geocode([u.area, u.city].filter(Boolean).join(", "));
+  if (!place) return false;
+  await db.user.update({ where: { id: userId }, data: { latitude: place.lat, longitude: place.lng } });
+  return true;
 }

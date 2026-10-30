@@ -7,6 +7,7 @@ import { getCurrentUser, roleLabel } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { navFor } from "@/lib/nav";
 import { navCounts } from "@/lib/nav-counts";
+import { repairMissingLocation } from "@/lib/geo";
 import { logout } from "@/app/actions/auth";
 
 // Every signed-in page depends on the request (session, database), so it is
@@ -19,6 +20,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   // slows down or breaks the page. /api/cron does the same on a schedule.
   after(() => sweep().catch((e) => console.error("[sweep]", e)));
   const user = await getCurrentUser();
+  if (user) after(() => repairMissingLocation(user.id).catch((e) => console.error("[location]", e)));
   // Pages call requireUser() themselves; this only decides whether to draw the sidebar.
   const counts = user ? await navCounts(user) : {};
   const sitter = user?.role === "SITTER"

@@ -47,6 +47,7 @@ export function navFor(role: Role, status = "ACTIVE"): NavItem[] {
     { href: "/admin/bookings", label: "Bookings", icon: "calendar" },
     { href: "/admin/payouts", label: "Payouts", icon: "wallet" },
     { href: "/admin/users", label: "Users", icon: "users" },
+    { href: "/admin/health", label: "System check", icon: "info" },
     { href: "/notifications", label: "Notifications", icon: "bell", badge: "notifications" },
     { href: "/settings", label: "Settings", icon: "gear" },
   ];

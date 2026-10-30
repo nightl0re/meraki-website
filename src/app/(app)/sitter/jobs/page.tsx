@@ -13,6 +13,8 @@ export default async function SitterJobsPage({ searchParams }: PageProps<"/sitte
   const user = await requireUser(["SITTER"]);
   const tab = (await searchParams).tab === "applications" ? "applications" : "near";
   const profile = await db.sitterProfile.findUniqueOrThrow({ where: { userId: user.id }, select: { hourlyRateCents: true, serviceRadiusKm: true } });
+  const me = await db.user.findUniqueOrThrow({ where: { id: user.id }, select: { latitude: true, area: true } });
+  const located = me.latitude != null;
 
   const [jobs, applications] = await Promise.all([
     tab === "near" && user.status === "ACTIVE" ? jobsNear(user.id) : Promise.resolve([]),
@@ -51,7 +53,12 @@ export default async function SitterJobsPage({ searchParams }: PageProps<"/sitte
       {user.status !== "ACTIVE" ? (
         <Alert tone="warn">You can browse and apply to jobs once our team has approved your profile.</Alert>
       ) : tab === "near" ? (
-        jobs.length === 0 ? (
+        !located ? (
+          <Alert tone="warn">
+            We couldn&apos;t place {me.area ? <>&ldquo;{me.area}&rdquo;</> : "you"} on the map, so we can&apos;t show jobs near you yet.{" "}
+            <Link href="/sitter/profile#about" className="font-semibold underline">Update your neighbourhood or postcode</Link> (for example &ldquo;Bangsar&rdquo; or &ldquo;59100&rdquo;).
+          </Alert>
+        ) : jobs.length === 0 ? (
           <EmptyState
             icon={<Briefcase size={32} />}
             title="No open jobs near you right now"

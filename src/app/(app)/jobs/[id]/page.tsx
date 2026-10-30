@@ -98,7 +98,7 @@ export default async function JobPage({ params, searchParams }: PageProps<"/jobs
                       <Rating avg={p.ratingAvg} count={p.ratingCount} />
                     </div>
                     <p className="text-sm text-ink-3">
-                      {p.headline}. {p.experienceYears} yrs experience, {p.completedJobs} jobs on Meraki{km != null && `, ${formatDistance(km)}`}.
+                      {p.headline}. {p.experienceYears} yrs experience, {p.completedJobs} {p.completedJobs === 1 ? "job" : "jobs"} on Meraki{km != null && `, ${formatDistance(km)}`}.
                     </p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {p.verifiedAt && <Badge tone="info"><SealCheck size={14} weight="fill" aria-hidden />ID verified</Badge>}
